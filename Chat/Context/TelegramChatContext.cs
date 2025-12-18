@@ -18,7 +18,7 @@ namespace AbsoluteBot.Chat.Context;
 /// <param name="lastMessages">Список последних сообщений в чате (опционально).</param>
 /// <param name="replyInfo">Информация о сообщении, на которое дается ответ (опционально).</param>
 public class TelegramChatContext(string username, int maxMessageLength, IChatService chatService, long channelId,
-        ChannelType channelType, int messageId, Message message, List<string>? lastMessages, ReplyInfo? replyInfo)
+        ChannelType channelType, int messageId, Message message, List<string>? lastMessages, ReplyInfo? replyInfo, bool isSpoilerMessage = false)
     : ChatContext("Telegram", username, maxMessageLength, chatService, lastMessages, replyInfo,
         new CommonTextFormatter())
 {
@@ -38,4 +38,6 @@ public class TelegramChatContext(string username, int maxMessageLength, IChatSer
     ///     Сообщение пользователя, с которым бот взаимодействует.
     /// </summary>
     public Message Message { get; set; } = message;
+
+    public bool isSpoilerMessage { get; set; } = isSpoilerMessage;
 }

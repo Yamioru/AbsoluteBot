@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.RegularExpressions;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Serilog;
 
@@ -6,7 +7,7 @@ namespace AbsoluteBot.Services.NeuralNetworkServices;
 
 #pragma warning disable IDE0028
 /// <summary>
-///     Класс <c>ChatHistory</c> предназначен для хранения и управления историей сообщений чата.
+/// Класс <c>ChatHistory</c> предназначен для хранения и управления историей сообщений чата.
 /// </summary>
 public class ChatHistory
 {
@@ -14,12 +15,16 @@ public class ChatHistory
     private const string FilePath = "ChatHistory_{0}.json";
     private const int SaveThreshold = 20; // Каждые сколько сообщений история чата сохраняется
     private const int RecentMessageCount = 7; // Сколько последних сообщений считаются последними сообщениями в чате
+
+    private static readonly Regex _placeholderRegex = new(@"\{(?<key>[^\{\}]+)\}",
+        RegexOptions.Compiled);
+
     private readonly JArray _messages = new();
-    private readonly SemaphoreSlim _messageSemaphore = new(1, 1);
     private readonly SemaphoreSlim _fileSemaphore = new(1, 1);
+    private readonly SemaphoreSlim _messageSemaphore = new(1, 1);
 
     /// <summary>
-    ///     Асинхронно добавляет начальные сообщения пользователя и модели в историю чата.
+    /// Асинхронно добавляет начальные сообщения пользователя и модели в историю чата.
     /// </summary>
     /// <param name="userMessage">Начальное сообщение пользователя.</param>
     /// <param name="modelMessage">Начальное сообщение модели.</param>
@@ -32,13 +37,13 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Асинхронно добавляет сообщение от роли в историю чата.
+    /// Асинхронно добавляет сообщение от роли в историю чата.
     /// </summary>
     /// <param name="role">Роль отправителя (обычно "model" или "user").</param>
     /// <param name="text">Текст сообщения.</param>
     /// <param name="base64Image">
-    ///     Строка, представляющая изображение в формате Base64. Если не указана, отправляется
-    ///     только текст.
+    /// Строка, представляющая изображение в формате Base64. Если не указана, отправляется
+    /// только текст.
     /// </param>
     /// <param name="platform">Платформа, на которой используется история чата.</param>
     public async Task AddMessageAsync(string role, string text, string platform, string? base64Image = null)
@@ -58,8 +63,8 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Асинхронно добавляет или обновляет сообщение от модели в истории чата.
-    ///     Если сообщение уже присутствует в истории, оно перемещается в конец списка.
+    /// Асинхронно добавляет или обновляет сообщение от модели в истории чата.
+    /// Если сообщение уже присутствует в истории, оно перемещается в конец списка.
     /// </summary>
     /// <param name="role">Роль отправителя (обычно "model").</param>
     /// <param name="text">Текст сообщения.</param>
@@ -104,8 +109,8 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Асинхронно добавляет или обновляет сообщение от пользователя в истории чата.
-    ///     Если сообщение уже присутствует в истории, оно перемещается в конец списка.
+    /// Асинхронно добавляет или обновляет сообщение от пользователя в истории чата.
+    /// Если сообщение уже присутствует в истории, оно перемещается в конец списка.
     /// </summary>
     /// <param name="role">Роль отправителя (обычно "user").</param>
     /// <param name="text">Текст сообщения.</param>
@@ -138,7 +143,7 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Асинхронно очищает историю чата, кроме двух первых сообщений.
+    /// Асинхронно очищает историю чата, кроме двух первых сообщений.
     /// </summary>
     public async Task ClearExceptFirstTwo()
     {
@@ -154,16 +159,27 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Возвращает текущую историю чата в формате <see cref="JArray" />.
+    /// Возвращает текущую историю чата в формате <see cref="JArray" />.
     /// </summary>
+    /// <param name="replacements">Заменяемые в промпте данные</param>
     /// <returns>История сообщений в формате <see cref="JArray" />.</returns>
-    public JArray GetHistory()
+    public JArray GetHistory(Dictionary<string, string> replacements)
     {
-        return _messages;
+        // Глубокое клонирование — оригинальный _messages не изменится
+        var historyCopy = (JArray) _messages.DeepClone();
+
+        if (historyCopy.Count == 0) return historyCopy;
+
+        var textToken = historyCopy[0]?["parts"]?[0]?["text"];
+        if (textToken is null) return historyCopy;
+
+        textToken.Replace(ReplacePlaceholders(textToken.ToString(), replacements));
+
+        return historyCopy;
     }
 
     /// <summary>
-    ///     Проверяет, есть ли сообщение в недавней истории.
+    /// Проверяет, есть ли сообщение в недавней истории.
     /// </summary>
     /// <param name="role">Роль отправителя (обычно "user" или "model").</param>
     /// <param name="text">Текст сообщения.</param>
@@ -184,8 +200,8 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Асинхронно загружает начальные сообщения для истории чата из файлов.
-    ///     Загружает сохранённую историю, если файл с сообщением пользователя изменялся более чем 3 часа назад.
+    /// Асинхронно загружает начальные сообщения для истории чата из файлов.
+    /// Загружает сохранённую историю, если файл с сообщением пользователя изменялся более чем 3 часа назад.
     /// </summary>
     /// <param name="userMessageFilePath">Путь к файлу с сообщением пользователя.</param>
     /// <param name="modelMessageFilePath">Путь к файлу с сообщением модели.</param>
@@ -194,7 +210,6 @@ public class ChatHistory
     {
         var fileInfo = new FileInfo(userMessageFilePath);
         if (fileInfo.Exists && DateTime.Now - fileInfo.LastWriteTime > TimeSpan.FromHours(3))
-        {
             // Если файл существует и был изменен более 3 часов назад, загружается сохранённая история
             try
             {
@@ -206,10 +221,7 @@ public class ChatHistory
                     if (loadedMessages != null)
                     {
                         _messages.Clear();
-                        foreach (var message in loadedMessages)
-                        {
-                            _messages.Add(message);
-                        }
+                        foreach (var message in loadedMessages) _messages.Add(message);
                         return; // Завершение метода, так как история уже загружена
                     }
                 }
@@ -218,7 +230,6 @@ public class ChatHistory
             {
                 Log.Error(ex, "Ошибка при загрузке сохранённой истории сообщений.");
             }
-        }
 
         // Если файл не существует или его изменения менее 3 часов назад, загружаются начальные сообщения
         if (!File.Exists(userMessageFilePath))
@@ -234,15 +245,14 @@ public class ChatHistory
         await AddInitialMessagesAsync(userMessage, modelMessage, platform).ConfigureAwait(false);
     }
 
-
     /// <summary>
-    ///     Создает объект сообщения в формате JSON, который добавляется в историю сообщений.
+    /// Создает объект сообщения в формате JSON, который добавляется в историю сообщений.
     /// </summary>
     /// <param name="role">Роль, связанная с сообщением (например, "user" или "model").</param>
     /// <param name="text">Текст сообщения.</param>
     /// <param name="base64Image">
-    ///     Строка, представляющая изображение в формате Base64. Если не указана, отправляется только
-    ///     текст.
+    /// Строка, представляющая изображение в формате Base64. Если не указана, отправляется только
+    /// текст.
     /// </param>
     /// <returns>Объект сообщения в формате JSON.</returns>
     private static JObject CreateMessage(string role, string text, string? base64Image = null)
@@ -268,9 +278,9 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Ищет последний индекс сообщения с указанной ролью и текстом в недавней истории сообщений.
-    ///     Возвращает индекс последнего найденного совпадения, если такое сообщение существует, иначе возвращает -1.
-    ///     Метод проверяет только последние messagesCount сообщений в истории.
+    /// Ищет последний индекс сообщения с указанной ролью и текстом в недавней истории сообщений.
+    /// Возвращает индекс последнего найденного совпадения, если такое сообщение существует, иначе возвращает -1.
+    /// Метод проверяет только последние messagesCount сообщений в истории.
     /// </summary>
     /// <param name="role">Роль, связанная с сообщением (например, "user" или "model").</param>
     /// <param name="text">Текст сообщения для поиска.</param>
@@ -290,7 +300,7 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Проверяет, соответствует ли сообщение заданной роли и тексту.
+    /// Проверяет, соответствует ли сообщение заданной роли и тексту.
     /// </summary>
     /// <param name="message">Сообщение для проверки.</param>
     /// <param name="role">Ожидаемая роль сообщения (например, "user" или "model").</param>
@@ -303,7 +313,7 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Удаляет все изображения из истории сообщений.
+    /// Удаляет все изображения из истории сообщений.
     /// </summary>
     /// <param name="platform">Платформа, на которой надо удалить изображения.</param>
     private async Task RemoveImagesFromHistoryAsync(string platform)
@@ -320,7 +330,20 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Асинхронно сохраняет сообщения в файл, если достигнут порог количества сообщений.
+    /// Заменяет плейс‑холдеры вида {Date}, {StreamState} и т.д.
+    /// </summary>
+    private static string ReplacePlaceholders(string template,
+        IDictionary<string, string> map)
+    {
+        return _placeholderRegex.Replace(template, m =>
+        {
+            var key = m.Groups["key"].Value;
+            return map.TryGetValue(key, out var value) ? value : m.Value;
+        });
+    }
+
+    /// <summary>
+    /// Асинхронно сохраняет сообщения в файл, если достигнут порог количества сообщений.
     /// </summary>
     /// <param name="platform">Платформа, на которой используется история чата.</param>
     private async Task SaveMessagesIfNeededAsync(string platform)
@@ -329,7 +352,7 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Асинхронно сохраняет историю сообщений в файл.
+    /// Асинхронно сохраняет историю сообщений в файл.
     /// </summary>
     /// <param name="platform">Платформа, на которой используется история чата.</param>
     private async Task SaveMessagesToFileAsync(string platform)
@@ -351,8 +374,8 @@ public class ChatHistory
     }
 
     /// <summary>
-    ///     Обрезает историю сообщений, если она превышает допустимый максимум.
-    ///     Удаляет третий и четвертый элементы в списке сообщений, если общее количество сообщений больше MaxMessages.
+    /// Обрезает историю сообщений, если она превышает допустимый максимум.
+    /// Удаляет третий и четвертый элементы в списке сообщений, если общее количество сообщений больше MaxMessages.
     /// </summary>
     private void TrimHistory()
     {

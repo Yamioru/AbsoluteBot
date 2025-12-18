@@ -10,7 +10,7 @@ namespace AbsoluteBot.Services.ScheduledTasks;
 ///     Сервис для выполнения ежедневных задач в Telegram, таких как отправка информации о праздниках и курсе валют.
 /// </summary>
 public class TelegramTasksService(TelegramChannelManager telegramChannelManager, TelegramChatService telegramChatService,
-    HolidaysService holidaysService, ChatGptService chatGptService, ExchangeRateService exchangeRateService)
+    HolidaysService holidaysService, AskGeminiService askGeminiService, ExchangeRateService exchangeRateService)
 {
     private const string DateFormat = "dd.MM";
     private const int MaxFactLength = 200;
@@ -53,9 +53,9 @@ public class TelegramTasksService(TelegramChannelManager telegramChannelManager,
     {
         var today = DateTime.Today.ToString(DateFormat);
         var holiday = holidaysService.GetHoliday(today);
-        var fact = await chatGptService.AskChatGptAsync($"Расскажи интересный факт про {holiday}, который отмечается {today}.", MaxFactLength)
+        var fact = await askGeminiService.AskGeminiResponseAsync($"Расскажи что-нибудь интересное и возможно малоизвестное на тему связанной с праздником {holiday}, который отмечается {today}.", MaxFactLength, instruction: "Информация должна быть действительно интересной, а не просто каким-то пресным фактом, такой информацией что-бы человека захотелось потом рассказать другим, что-нибудь по типу, а вот ты знал, что... и эта информация. А в ответ бы ему сказали, ого, прикольно.", temperature: 2.0)
             .ConfigureAwait(false);
-        await telegramChatService.SendMessageToChannelAsync($"Сегодня праздник: {holiday}\nВот интересный факт: {fact}", channelId.ToString())
+        await telegramChatService.SendMessageToChannelAsync($"Сегодня праздник: {holiday}\nВот кое-что интересное на эту тему: {fact}", channelId.ToString())
             .ConfigureAwait(false);
     }
 }

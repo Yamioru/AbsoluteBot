@@ -61,7 +61,7 @@ internal class GeminiImageGenerateCommand(GeminiImageGenerationService imageGene
     {
         // Использовать можно только в административных каналах или в премиумном телеграме
         return CommandPermissionChecker.IsAdministrativeChannel(command) ||
-               (command.Context as TelegramChatContext)!.ChannelType == ChannelType.Premium;
+               command.Context is TelegramChatContext {ChannelType: ChannelType.Premium};
     }
 
     public string Name => "!нарисуй";

@@ -16,9 +16,9 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
 {
     private const string ModelGeminiName = "model";
     private const string UserGeminiName = "user";
-    private const int MaxOutputTokens = 200;
+    private const int MaxOutputTokens = 2000;
     private const double TopP = 0.95;
-    private const double InitialTemperature = 0.6;
+    private const double InitialTemperature = 1.6;
     private const int MaxGenerationAttempts = 3;
     private const int DelayBetweenAttempts = 500;
     private const string CategorySexuallyExplicit = "HARM_CATEGORY_SEXUALLY_EXPLICIT";
@@ -232,26 +232,27 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
     /// </summary>
     /// <param name="temperature">Параметр температуры для генерации (влияет на креативность ответа).</param>
     /// <param name="chatHistory">История чата, используемая для генерации ответа.</param>
+    /// <param name="replacements">Заменяемые в промпте данные</param>
     /// <returns>Строка с JSON-данными для отправки модели.</returns>
-    private static string GenerateJsonDataString(double temperature, ChatHistory chatHistory)
+    private static string GenerateJsonDataString(double temperature, ChatHistory chatHistory, Dictionary<string, string> replacements)
     {
         var jsonData = new JObject
         {
-            ["contents"] = chatHistory.GetHistory(),
+            ["contents"] = chatHistory.GetHistory(replacements),
             ["generationConfig"] = new JObject
             {
                 ["temperature"] = temperature,
                 ["maxOutputTokens"] = MaxOutputTokens,
-                ["topP"] = TopP,
-                ["presencePenalty"] = 1.9,
-                ["stopSequences"] = new JArray
-                {
-                    "Лучше",
-                    "Давай лучше",
-                    "Давай не будем",
-                    "Может, лучше",
-                    "Сменим тему"
-                }
+                //["topP"] = TopP,
+                //["presencePenalty"] = 1.9,
+                //["stopSequences"] = new JArray
+                //{
+                //    "Лучше",
+                //    "Давай лучше",
+                //    "Давай не будем",
+                //    "Может, лучше",
+                //    "Сменим тему"
+                //}
             },
             ["safetySettings"] = new JArray
             {
@@ -276,9 +277,37 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
                     ["threshold"] = ThresholdBlockNone
                 }
             }
+            //,["tools"] = new JArray
+            //{
+            //    new JObject
+            //    {
+            //        ["google_search"] = new JObject()
+            //    }
+            //}
         };
         return jsonData.ToString(Formatting.None);
     }
+
+    /// <summary>
+    /// Создание замен для слов в промпте
+    /// </summary>
+    /// <param name="platform">Платформа, для которой генерируется ответ.</param>
+    /// <returns></returns>
+    private async Task<Dictionary<string, string>> BuildReplacements(string platform)
+    {
+        var streamWasOnline = await configService.GetConfigValueAsync<bool>("StreamWasOnline").ConfigureAwait(false);
+        var gameName = await configService.GetConfigValueAsync<string>("LastGameName").ConfigureAwait(false);
+        var news = await configService.GetConfigValueAsync<string>("News").ConfigureAwait(false);
+        return new Dictionary<string, string>
+        {
+            ["Date"] = DateTime.Now.ToString("yyyy-MM-dd"),
+            ["StreamState"] = streamWasOnline ? "Включен" : "Выключен",
+            ["LastGameName"] = gameName ?? "Не найдена",
+            ["Platform"] = platform,
+            ["News"] = news ?? "Новостей нет" 
+        };
+    }
+
 
     /// <summary>
     ///     Генерация ответа модели на основе текущей истории чата для платформы.
@@ -297,7 +326,8 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
             var url = $"{GeminiSettingsProvider.BaseApiUrl}/{model}:generateContent?key={apiKey}";
             try
             {
-                var jsonData = GenerateJsonDataString(temperature, chatHistory);
+                var replacements = await BuildReplacements(platform);
+                var jsonData = GenerateJsonDataString(temperature, chatHistory, replacements);
                 var text = await settingsProvider.FetchModelResponseAsync(jsonData, url).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(text))
                     return text;

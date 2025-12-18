@@ -19,8 +19,7 @@ public class ExecuteExtraCommand(ExtraCommandsService extraCommandsService) : IC
         // Может быть использована если:
         return command.UserRole != UserRole.Ignored // не игнорируемые пользователи
                && CommandPermissionChecker.IsOfficialChannel(command) // в официально подключенных чатах всех сервисов
-               && (extraCommandsService.GetCommand(command.Command) != null // если такая команда существует
-                   || command.Command == "!команды"); // или если вызов используется для вывода всех команд
+               && (extraCommandsService.GetCommand(command.Command) != null); // если такая команда существует
     }
 
     public async Task<string> ExecuteAsync(ParsedCommand command)

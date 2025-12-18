@@ -13,7 +13,7 @@ namespace AbsoluteBot.Services;
 /// </summary>
 public partial class HowLongToBeatService
 {
-    private const string SearchUrlTemplate = "https://howlongtobeat.com/api/find/";
+    private const string SearchUrlTemplate = "https://howlongtobeat.com/api/seek/";
     private const string BaseUrl = "https://howlongtobeat.com";
     private const string AcceptLanguageHeader = "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7";
     private const string AcceptHeader = "*/*";
@@ -192,6 +192,9 @@ public partial class HowLongToBeatService
         match = SearchKeyRegex2().Match(scriptResponse);
         if (match.Success) return match.Groups["part1"].Value + match.Groups["part2"].Value;
 
+        match = SearchKeyRegex3().Match(scriptResponse);
+        if (match.Success) return match.Groups["part1"].Value + match.Groups["part2"].Value;
+
         // Возврат null, если ключ не найден
         return null;
     }
@@ -223,4 +226,7 @@ public partial class HowLongToBeatService
 
     [GeneratedRegex("\"/api/find/\"\\.concat\\(\"(?<part1>[a-zA-Z0-9]+)\"\\)\\.concat\\(\"(?<part2>[a-zA-Z0-9]+)\"\\)", RegexOptions.Compiled)]
     private static partial Regex SearchKeyRegex2();
+
+    [GeneratedRegex("\"/api/seek/\"\\.concat\\(\"(?<part1>[a-zA-Z0-9]+)\"\\)\\.concat\\(\"(?<part2>[a-zA-Z0-9]+)\"\\)", RegexOptions.Compiled)]
+    private static partial Regex SearchKeyRegex3();
 }

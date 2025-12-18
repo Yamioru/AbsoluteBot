@@ -25,7 +25,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
 {
     private const int VkPlayAllCommandsReminderIntervalHours = 3;
     private const int VkPlayRandomCommandReminderIntervalMinutes = 42;
-    private const string VkPlayReminderMessage = "Напиши !команды, чтобы узнать что я могу, или тегни меня, чтобы поболтать.";
+    private const string VkPlayReminderMessage = "Хэй молодёжь, блин, привет друзья, напишите !команды, чтоб узнать кто я. А если вдруг скучно, то тегни меня и напиши ты как дела!";
     private bool _streamWasOnline;
     private CancellationTokenSource? _vkPlayAllCommandsReminderCancellationTokenSource;
     private CancellationTokenSource? _vkPlayRandomCommandReminderCancellationTokenSource;
@@ -192,8 +192,9 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
             {
                 if (_vkPlayRandomCommandReminderCancellationTokenSource.Token.IsCancellationRequested) continue;
                 var parameters = string.Empty;
-                if (command is IParameterized parameterizedCommand) parameters = parameterizedCommand.Parameters;
-                var message = $"А вы знали, что есть команда \"{command.Name} *{parameters}*\", которая {command.Description}";
+                if (command is IParameterized parameterizedCommand)
+                    parameters = parameterizedCommand.Parameters != null ? "*" + parameterizedCommand.Parameters + "*" : "*пусто*";
+                var message = $"А вы знали, что есть команда \"{command.Name} {parameters}\", которая {command.Description}";
                 // Ожидание 40 минут или отмены через CancellationToken
                 await Task.Delay(TimeSpan.FromMinutes(VkPlayRandomCommandReminderIntervalMinutes),
                     _vkPlayRandomCommandReminderCancellationTokenSource.Token).ConfigureAwait(false);

@@ -7,10 +7,11 @@ namespace AbsoluteBot.Services.ScheduledTasks;
 ///     и поздравлений с днем рождения.
 /// </summary>
 public class ScheduledTaskService(BirthdayTelegramNotificationService birthdayTelegramNotificationService,
-    TelegramTasksService telegramTasksService, TwitchStreamMonitoringService twitchStreamMonitoringService) : IAsyncDisposable
+    TelegramTasksService telegramTasksService, TwitchStreamMonitoringService twitchStreamMonitoringService, CommonTasksService commonTasksService) : IAsyncDisposable
 {
     private const int TwitchCheckTimeMinutes = 1;
     private const int BirthdayCheckHour = 12;
+    private const int CommonCheckHour = 18;
     private const int TelegramTaskHour = 11;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
@@ -41,6 +42,7 @@ public class ScheduledTaskService(BirthdayTelegramNotificationService birthdayTe
         {
             ScheduleDailyTask(BirthdayCheckHour, birthdayTelegramNotificationService.ExecuteDailyBirthdayCheck, cancellationToken),
             ScheduleDailyTask(TelegramTaskHour, telegramTasksService.ExecuteDailyTelegramTask, cancellationToken),
+            ScheduleDailyTask(CommonCheckHour, commonTasksService.ExecuteDailyCommonTask, cancellationToken),
             SchedulePeriodicTask(TimeSpan.FromMinutes(TwitchCheckTimeMinutes),
                 () => twitchStreamMonitoringService.ExecuteTwitchOnlineCheckTask(TwitchCheckTimeMinutes), cancellationToken)
         };

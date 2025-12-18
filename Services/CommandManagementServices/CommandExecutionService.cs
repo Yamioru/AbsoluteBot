@@ -69,13 +69,14 @@ public class CommandExecutionService(ICommandParser commandParser, ICommandRegis
     /// <returns>Результат выполнения команды или <c>null</c>, если команда не найдена или недоступна.</returns>
     private async Task<string?> ExecuteParsedCommandAsync(ParsedCommand parsedCommand, ChatContext context)
     {
-        var command = commandRegistry.FindCommand(parsedCommand.Command);
-        if (command != null && await CanExecuteCommand(command, parsedCommand, context).ConfigureAwait(false))
+        //Проверка на наличие динамических команд
+        IChatCommand? command = commandRegistry.FindCommandByType<ExecuteExtraCommand>();
+        if (command != null && command.CanExecute(parsedCommand))
             return await ExecuteCommandAsync(command, parsedCommand, context).ConfigureAwait(false);
 
-        // Если команда не найдена, проверка на наличие динамических команд
-        command = commandRegistry.FindCommandByType<ExecuteExtraCommand>();
-        if (command != null && command.CanExecute(parsedCommand))
+        // Если команда не найдена, проверка на наличие обычных команд
+        command = commandRegistry.FindCommand(parsedCommand.Command);
+        if (command != null && await CanExecuteCommand(command, parsedCommand, context).ConfigureAwait(false))
             return await ExecuteCommandAsync(command, parsedCommand, context).ConfigureAwait(false);
 
         // Если команда не найдена, проверка на наличие всемогущих команд

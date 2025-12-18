@@ -17,7 +17,7 @@ public class CommandsListCommand(CommandsListService commandsListService) : ICha
     public virtual bool CanExecute(ParsedCommand command)
     {
         // Могут использовать не игнорируемые пользователи
-        return command.UserRole != UserRole.Ignored;
+        return true;
     }
 
     public async Task<string> ExecuteAsync(ParsedCommand command)

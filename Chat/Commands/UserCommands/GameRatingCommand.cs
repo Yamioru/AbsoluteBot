@@ -18,7 +18,7 @@ public class GameRatingCommand(RateGoogleSheetsService rateGoogleSheetsService, 
     public override bool CanExecute(ParsedCommand command)
     {
         // Могут использовать не игнорируемые пользователи в официально подключенных чатах всех сервисов
-        return command.UserRole != UserRole.Ignored && CommandPermissionChecker.IsOfficialChannel(command);
+        return CommandPermissionChecker.IsOfficialChannel(command);
     }
 
     protected override async Task<string> ExecuteLogicAsync(ParsedCommand command)

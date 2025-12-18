@@ -1,5 +1,6 @@
 ﻿using AbsoluteBot.Chat.Context;
 using AbsoluteBot.Models;
+using AbsoluteBot.Services.ChatServices.VkPlayLive;
 using AbsoluteBot.Services.NeuralNetworkServices;
 
 namespace AbsoluteBot.Chat.Commands;
@@ -18,6 +19,7 @@ public class AlmightyCommand(ChatGptService chatGptService) : IChatCommand
         // Может быть использована если:
         return command.UserRole != UserRole.Ignored // не игнорируемые пользователи
                && CommandPermissionChecker.IsOfficialChannel(command) // в официально подключенных чатах всех сервисов
+               && command.Context.ChatService is not VkPlayChatService
                && command.Command.StartsWith('!'); 
     }
 

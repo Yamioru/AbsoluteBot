@@ -8,35 +8,51 @@ namespace AbsoluteBot.Services.NeuralNetworkServices;
 /// Сервис для генерации изображений с помощью Gemini
 /// </summary>
 /// <param name="settingsProvider"></param>
-public class GeminiImageGenerationService(GeminiSettingsProvider settingsProvider)
+public class GeminiImageGenerationService(HttpClient httpClient, GeminiSettingsProvider settingsProvider)
 {
     /// <summary>
-    /// Асинхронный запрос к модели Gemini с передачей сообщения.
+    /// Сгенерировать/отредактировать изображение.
+    /// Если передать base64 изображения, модель выполнит редактирование (image+text->image).
     /// </summary>
-    /// <param name="message">Сообщение для отправки модели.</param>
-    /// <param name="base64Image">Изображение в формате Base64.</param>
-    /// <returns>Ответ модели в base64 и текст или null, если возникла ошибка.</returns>
+    /// <param name="message">Текстовый промпт.</param>
+    /// <param name="base64Image">Опционально: входное изображение base64 (без префикса data:...)</param>
+    /// <returns>(text, imageBase64) — текст и первая полученная картинка в base64, либо null/null</returns>
     public async Task<(string? text, string? image)> GenerateImageGeminiResponseAsync(string message, string? base64Image = null)
     {
         try
         {
-            if (settingsProvider.ApiKeys == null || settingsProvider.ApiKeys.Count == 0) return (null, null);
-            message = "Создай пожалуйста изображение с следующим промптом: " + message;
-            string? text = null;
-            string? image = null;
+            if (settingsProvider.ApiKeys == null || settingsProvider.ApiKeys.Count == 0)
+                return (null, null);
+
+            // Немного «подсказки» модели на русском оставим как у вас
+            var prompt = "Создай пожалуйста изображение " + message;
+
             foreach (var apiKey in settingsProvider.ApiKeys)
             {
-                var url = $"{GeminiSettingsProvider.BaseApiUrl}/gemini-2.0-flash-exp:generateContent?key={apiKey}";
+                var url = $"{GeminiSettingsProvider.BaseApiUrl}/models/gemini-3-pro-image-preview:generateContent";
 
-                var jsonData = GenerateJsonPayload(message, base64Image);
-                var stream = await settingsProvider.FetchImageModelResponseStreamAsync(jsonData, url).ConfigureAwait(false);
-                (text, image) = await ProcessImageStreamAsync(stream);
-                if (string.IsNullOrEmpty(image))
+                var jsonData = GenerateJsonPayload(prompt, base64Image);
+
+                using var req = new HttpRequestMessage(HttpMethod.Post, url);
+                req.Headers.Add("x-goog-api-key", apiKey);
+                req.Content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+
+                using var resp = await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    // попробуем следующий ключ, если есть
+                    Log.Warning("Gemini API returned {Status} for key tail=...{Tail}", (int) resp.StatusCode, apiKey[^4..]);
                     continue;
-                return (text, image);
+                }
+
+                using var stream = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                var (text, image) = await ProcessImageStreamAsync(stream).ConfigureAwait(false);
+
+                if (!string.IsNullOrEmpty(image))
+                    return (text, image);
             }
 
-            return (text, image);
+            return (null, null);
         }
         catch (Exception ex)
         {
@@ -46,10 +62,8 @@ public class GeminiImageGenerationService(GeminiSettingsProvider settingsProvide
     }
 
     /// <summary>
-    /// Обрабатывает поток изображения, предполагая, что он может содержать как текст, так и base64 строку изображения.
+    /// Обработка ответа: вытащить текст и первую картинку (base64) из parts.
     /// </summary>
-    /// <param name="imageStream">Поток ответа от Gemini.</param>
-    /// <returns>Кортеж, содержащий текст и base64 строку изображения (оба могут быть null).</returns>
     public async Task<(string? Text, string? Base64Image)> ProcessImageStreamAsync(Stream? imageStream)
     {
         if (imageStream == null) return (null, null);
@@ -68,15 +82,22 @@ public class GeminiImageGenerationService(GeminiSettingsProvider settingsProvide
             if (parts != null)
                 foreach (var part in parts)
                 {
+                    // Текстовая часть
                     var textToken = part["text"];
-                    if (textToken != null) textResult = textToken.ToString();
+                    if (textToken != null)
+                        textResult = textToken.ToString();
 
-                    var inlineData = part["inlineData"] as JObject;
-                    if (inlineData != null)
+                    // Картинка приходит в part.inline_data.data
+                    if (part["inline_data"] is JObject inlineData)
                     {
-                        var mimeType = inlineData["mimeType"]?.ToString();
+                        var mimeType = inlineData["mime_type"]?.ToString();
                         var data = inlineData["data"]?.ToString();
-                        if (mimeType == "image/png" && !string.IsNullOrEmpty(data)) base64ImageResult = data;
+                        if (!string.IsNullOrEmpty(data) && mimeType != null && mimeType.StartsWith("image/"))
+                        {
+                            base64ImageResult = data;
+                            // Берём первую валидную картинку и заканчиваем
+                            break;
+                        }
                     }
                 }
 
@@ -94,30 +115,27 @@ public class GeminiImageGenerationService(GeminiSettingsProvider settingsProvide
     }
 
     /// <summary>
-    /// Создание JSON-данных с сообщением и опциональной строкой изображения для отправки модели.
+    /// Собираем JSON для REST API Gemini 2.5 Flash Image Preview:
+    /// contents -> parts[], где текст и (опционально) inline_data c mime_type и data (base64)
     /// </summary>
-    /// <param name="message">Сообщение пользователя.</param>
-    /// <param name="image">Строка, представляющая изображение в формате Base64. Если не указана, отправляется только текст.</param>
-    /// <returns>JSON-данные для отправки модели.</returns>
-    private static string GenerateJsonPayload(string message, string? image = null)
+    private static string GenerateJsonPayload(string message, string? imageBase64 = null)
     {
         var parts = new JArray
         {
             new JObject {["text"] = message}
         };
 
-        if (!string.IsNullOrEmpty(image))
-            parts.Add(
-                new JObject
+        if (!string.IsNullOrEmpty(imageBase64))
+            parts.Add(new JObject
+            {
+                ["inline_data"] = new JObject
                 {
-                    ["inlineData"] = new JObject
-                    {
-                        ["mimeType"] = "image/png",
-                        ["data"] = image
-                    }
-                });
+                    ["mime_type"] = "image/png",
+                    ["data"] = imageBase64
+                }
+            });
 
-        var jsonPayload = new JObject
+        var payload = new JObject
         {
             ["contents"] = new JArray
             {
@@ -125,18 +143,9 @@ public class GeminiImageGenerationService(GeminiSettingsProvider settingsProvide
                 {
                     ["parts"] = parts
                 }
-            },
-            ["generationConfig"] = new JObject
-            {
-                ["temperature"] = 1,
-                ["topP"] = 0.95,
-                ["topK"] = 40,
-                ["maxOutputTokens"] = 8192,
-                ["responseMimeType"] = "text/plain",
-                ["responseModalities"] = new JArray {"image", "text"}
             }
         };
 
-        return jsonPayload.ToString();
+        return payload.ToString();
     }
 }

@@ -5,13 +5,13 @@ using Serilog;
 namespace AbsoluteBot.Helpers;
 
 /// <summary>
-///     Содержит утилиты для обработки текста, включая очистку от HTML-тегов, обрезку предложений, удаление эмодзи и
-///     прочее.
+/// Содержит утилиты для обработки текста, включая очистку от HTML-тегов, обрезку предложений, удаление эмодзи и
+/// прочее.
 /// </summary>
 public static partial class TextProcessingUtils
 {
     /// <summary>
-    ///     Очищает строку от HTML-тегов и декодирует HTML-сущности.
+    /// Очищает строку от HTML-тегов и декодирует HTML-сущности.
     /// </summary>
     /// <param name="inputText">Входная строка с HTML-тегами.</param>
     /// <returns>Строка без HTML-тегов и с декодированными сущностями.</returns>
@@ -32,7 +32,7 @@ public static partial class TextProcessingUtils
     }
 
     /// <summary>
-    ///     Очищает текст от HTML-тегов, специальных символов и других нежелательных элементов.
+    /// Очищает текст от HTML-тегов, специальных символов и других нежелательных элементов.
     /// </summary>
     /// <param name="inputText">Входной текст для очистки.</param>
     /// <returns>Очищенный текст.</returns>
@@ -64,7 +64,7 @@ public static partial class TextProcessingUtils
     }
 
     /// <summary>
-    ///     Обрезает текст до указанной длины, при этом старается сохранить целостность предложений.
+    /// Обрезает текст до указанной длины, при этом старается сохранить целостность предложений.
     /// </summary>
     /// <param name="inputText">Входной текст для обрезки.</param>
     /// <param name="maxLength">Максимальная длина текста после обрезки.</param>
@@ -99,7 +99,7 @@ public static partial class TextProcessingUtils
     }
 
     /// <summary>
-    ///     Удаляет эмодзи и другие специальные символы из текста.
+    /// Удаляет эмодзи и другие специальные символы из текста.
     /// </summary>
     /// <param name="message">Текст для обработки.</param>
     /// <returns>Текст без эмодзи и специальных символов.</returns>
@@ -109,7 +109,7 @@ public static partial class TextProcessingUtils
     }
 
     /// <summary>
-    ///     Удаляет все символы, кроме буквенных, из текста.
+    /// Удаляет все символы, кроме буквенных, из текста.
     /// </summary>
     /// <param name="inputText">Входной текст для обработки.</param>
     /// <returns>Текст, содержащий только буквы и пробелы.</returns>
@@ -119,7 +119,7 @@ public static partial class TextProcessingUtils
     }
 
     /// <summary>
-    ///     Удаляет все символы, кроме букв, цифр и пробелов, из текста.
+    /// Удаляет все символы, кроме букв, цифр и пробелов, из текста.
     /// </summary>
     /// <param name="inputText">Входной текст для обработки.</param>
     /// <returns>Текст, содержащий только буквы, цифры и пробелы.</returns>
@@ -136,6 +136,32 @@ public static partial class TextProcessingUtils
             Log.Error(ex, "Ошибка при удалении неалфавитно-цифровых символов.");
             return inputText;
         }
+    }
+
+    /// <summary>
+    /// Обработчик текста перед добавлением в json
+    /// </summary>
+    /// <param name="input">Входной текст</param>
+    /// <returns>Выходной текст</returns>
+    public static string SanitizeName(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+
+        // Берём первую непустую строку
+        var firstLine = input.Split(new[] {'\r', '\n'}, StringSplitOptions.RemoveEmptyEntries)[0];
+
+        // Убираем возможные маркдауны/кавычки/лишние знаки
+        firstLine = Regex.Replace(firstLine, @"[*_`#>\[\](){}~]", string.Empty);
+        firstLine = firstLine.Trim(' ', '"', '«', '»', '“', '”', '\'', '.', '!', '?', ':', ';');
+
+        // Схлопываем пробелы
+        firstLine = Regex.Replace(firstLine, @"\s{2,}", " ").Trim();
+
+        // Ограничим длину на всякий
+        if (firstLine.Length > 40)
+            firstLine = firstLine[..40].Trim();
+
+        return firstLine;
     }
 
     [GeneratedRegex("[^a-zA-Zа-яА-Я0-9 ]")]

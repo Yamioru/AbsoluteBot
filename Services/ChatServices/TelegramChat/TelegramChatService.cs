@@ -1,6 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using AbsoluteBot.Chat.Context;
 using AbsoluteBot.Events;
+using AbsoluteBot.Helpers;
 using AbsoluteBot.Services.ChatServices.Interfaces;
 using AbsoluteBot.Services.UtilityServices;
 using Serilog;
@@ -121,7 +122,7 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
             {
                 MessageId = telegramContext.MessageId
             };
-            await botClient.SendMessage(telegramContext.ChannelId, message,
+            await botClient.SendMessage(telegramContext.ChannelId, TextProcessingUtils.CutSentence(message, MaxMessageLength),
                 replyParameters: replyParameters).ConfigureAwait(false);
         });
     }
@@ -164,18 +165,29 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
     /// <param name="message">Текст сообщения с Markdown-разметкой.</param>
     /// <param name="context">Контекст чата, содержащий данные для отправки сообщения.</param>
     /// <returns>Задача, представляющая выполнение операции отправки сообщения.</returns>
-    public Task SendMarkdownMessageAsync(string message, ChatContext context)
+    public async Task SendMarkdownMessageAsync(string message, ChatContext context)
     {
-        return ExecuteIfServiceIsReady(async botClient =>
-        {
-            if (context is not TelegramChatContext telegramContext) return;
-            var replyParameters = new ReplyParameters
+        if (_botClient != null && !_isDisposed && _isConfigured)
+            try
             {
-                MessageId = telegramContext.MessageId
-            };
-            await botClient.SendMessage(telegramContext.ChannelId, message,
-                replyParameters: replyParameters, parseMode: ParseMode.Markdown).ConfigureAwait(false);
-        });
+                if (context is not TelegramChatContext telegramContext) return;
+                var replyParameters = new ReplyParameters
+                {
+                    MessageId = telegramContext.MessageId
+                };
+                try
+                {
+                    await _botClient.SendMessage(telegramContext.ChannelId, message, replyParameters: replyParameters, parseMode: ParseMode.Markdown).ConfigureAwait(false);
+                }
+                catch
+                {
+                    await SendMessageAsync(message, context);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Ошибка в методе {MethodName} при выполнении операции с Telegram _botClient.", SendMarkdownMessageAsync);
+            }
     }
 
     /// <summary>
@@ -209,7 +221,7 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
                 MessageId = telegramContext.MessageId
             };
             await botClient.SendPhoto(telegramContext.ChannelId, file,
-                replyParameters: replyParameters).ConfigureAwait(false);
+                replyParameters: replyParameters, hasSpoiler: telegramContext.isSpoilerMessage).ConfigureAwait(false);
         });
     }
 

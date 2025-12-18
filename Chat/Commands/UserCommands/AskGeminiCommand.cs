@@ -1,6 +1,7 @@
 ﻿using AbsoluteBot.Chat.Context;
 using AbsoluteBot.Services.ChatServices.Interfaces;
 using AbsoluteBot.Services.NeuralNetworkServices;
+using Serilog;
 
 namespace AbsoluteBot.Chat.Commands.UserCommands;
 
@@ -16,15 +17,33 @@ public class AskGeminiCommand(AskGeminiService geminiService) : BaseCommand, IPa
 
     protected override async Task<string> ExecuteLogicAsync(ParsedCommand command)
     {
+        // Логирование запроса с информацией о пользователе
+        Log.Information("Gemini запрос от {Username} на платформе {Platform}: {Question}", 
+            command.Context.Username, 
+            command.Context.Platform, 
+            command.Parameters);
+
         string? response;
         if (command.Context.ChatService is IChatImageService chatImageService)
         {
             var image = await chatImageService.GetImageAsBase64Async(command.Parameters, command.Context);
-            response = await geminiService.AskGeminiResponseAsync(command.Parameters, command.Context.MaxMessageLength, image).ConfigureAwait(false);
+            response = await geminiService.AskGeminiResponseAsync(command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message, image).ConfigureAwait(false);
         }
         else
         {
-            response = await geminiService.AskGeminiResponseAsync(command.Parameters, command.Context.MaxMessageLength).ConfigureAwait(false);
+            response = await geminiService.AskGeminiResponseAsync(command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message).ConfigureAwait(false);
+        }
+
+        // Логирование результата
+        if (response != null)
+        {
+            Log.Information("Gemini успешно ответил пользователю {Username}", command.Context.Username);
+        }
+        else
+        {
+            Log.Warning("Gemini не смог ответить пользователю {Username} на запрос: {Question}", 
+                command.Context.Username, 
+                command.Parameters);
         }
 
         return response ?? "Не удалось получить ответ.";
