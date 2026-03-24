@@ -1,9 +1,7 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using AbsoluteBot.Helpers;
 using AbsoluteBot.Models;
-using HtmlAgilityPack;
 using Serilog;
 
 namespace AbsoluteBot.Services;
@@ -11,13 +9,14 @@ namespace AbsoluteBot.Services;
 /// <summary>
 /// Сервис для получения информации о времени прохождения игр с сайта HowLongToBeat.
 /// </summary>
-public partial class HowLongToBeatService
+public class HowLongToBeatService
 {
-    private const string SearchUrlTemplate = "https://howlongtobeat.com/api/seek/";
+    private const string SearchUrl = "https://howlongtobeat.com/api/search/";
+    private const string SearchInitUrl = "https://howlongtobeat.com/api/search/init";
     private const string BaseUrl = "https://howlongtobeat.com";
     private const string AcceptLanguageHeader = "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7";
     private const string AcceptHeader = "*/*";
-    private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+    private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36";
     private const string OriginHeader = "https://howlongtobeat.com";
     private const string RefererHeader = "https://howlongtobeat.com";
     private readonly HttpClient _httpClient;
@@ -30,6 +29,7 @@ public partial class HowLongToBeatService
         _httpClient.DefaultRequestHeaders.Add("Accept-Language", AcceptLanguageHeader);
         _httpClient.DefaultRequestHeaders.Add("Origin", OriginHeader);
         _httpClient.DefaultRequestHeaders.Add("Referer", RefererHeader);
+        _httpClient.DefaultRequestHeaders.Add("Cookie", "pv=1");
     }
 
     /// <summary>
@@ -42,14 +42,13 @@ public partial class HowLongToBeatService
         try
         {
             var cleanedGameName = CleanGameName(gameName);
-            var searchKey = await FetchSearchKeyAsync().ConfigureAwait(false);
+            var authToken = await FetchAuthTokenAsync().ConfigureAwait(false);
 
-            if (string.IsNullOrEmpty(searchKey)) return 0;
+            if (string.IsNullOrEmpty(authToken)) return 0;
 
-            var searchUrl = BuildSearchUrl(searchKey);
             var searchRequest = BuildSearchRequest(cleanedGameName);
 
-            var gameData = await FetchGameDataAsync(searchUrl, searchRequest).ConfigureAwait(false);
+            var gameData = await FetchGameDataAsync(searchRequest, authToken).ConfigureAwait(false);
 
             return ExtractGameDuration(gameData);
         }
@@ -103,16 +102,6 @@ public partial class HowLongToBeatService
     }
 
     /// <summary>
-    /// Формирует URL для запроса с использованием поискового ключа.
-    /// </summary>
-    /// <param name="searchKey">Поисковый ключ.</param>
-    /// <returns>URL для выполнения поиска игры.</returns>
-    private static string BuildSearchUrl(string searchKey)
-    {
-        return $"{SearchUrlTemplate}{searchKey}";
-    }
-
-    /// <summary>
     /// Очищает название игры от неалфавитных символов.
     /// </summary>
     /// <param name="gameName">Название игры.</param>
@@ -143,33 +132,22 @@ public partial class HowLongToBeatService
     }
 
     /// <summary>
-    /// Извлекает URL скрипта из HTML-контента.
-    /// </summary>
-    /// <param name="htmlContent">HTML-контент страницы.</param>
-    /// <returns>URL скрипта или null, если не найдено.</returns>
-    private static string? ExtractScriptUrl(string htmlContent)
-    {
-        var htmlDocument = new HtmlDocument();
-        htmlDocument.LoadHtml(htmlContent);
-
-        var scriptNodes = htmlDocument.DocumentNode.SelectNodes("//script[@src]");
-        return (from scriptNode in scriptNodes
-            select scriptNode.GetAttributeValue("src", string.Empty)
-            into src
-            where src.Contains("_app-")
-            select BaseUrl + src).FirstOrDefault();
-    }
-
-    /// <summary>
     /// Выполняет запрос к API HowLongToBeat для получения данных об игре.
     /// </summary>
-    /// <param name="searchUrl">URL для поиска.</param>
     /// <param name="searchRequest">Запрос для поиска игры.</param>
+    /// <param name="authToken">Токен аутентификации.</param>
     /// <returns>Данные о результатах поиска игры.</returns>
-    private async Task<HowLongToBeatSearchResponse?> FetchGameDataAsync(string searchUrl, object searchRequest)
+    private async Task<HowLongToBeatSearchResponse?> FetchGameDataAsync(object searchRequest, string authToken)
     {
         var content = new StringContent(JsonSerializer.Serialize(searchRequest), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync(searchUrl, content).ConfigureAwait(false);
+        
+        using var request = new HttpRequestMessage(HttpMethod.Post, SearchUrl)
+        {
+            Content = content
+        };
+        request.Headers.Add("x-auth-token", authToken);
+        
+        var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         var jsonResponse = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -177,56 +155,33 @@ public partial class HowLongToBeatService
     }
 
     /// <summary>
-    /// Получает поисковый ключ из скрипта по указанному URL.
+    /// Получает токен аутентификации, необходимый для выполнения запросов к API HowLongToBeat.
     /// </summary>
-    /// <param name="scriptUrl">URL скрипта.</param>
-    /// <returns>Поисковый ключ или null, если не найдено.</returns>
-    private async Task<string?> FetchKeyFromScriptAsync(string scriptUrl)
-    {
-        var scriptResponse = await _httpClient.GetStringAsync(scriptUrl).ConfigureAwait(false);
-
-        var match = SearchKeyRegex().Match(scriptResponse);
-        if (match.Success) return match.Groups["key"].Value;
-
-        // Попытка найти ключ с использованием второго регулярного выражения
-        match = SearchKeyRegex2().Match(scriptResponse);
-        if (match.Success) return match.Groups["part1"].Value + match.Groups["part2"].Value;
-
-        match = SearchKeyRegex3().Match(scriptResponse);
-        if (match.Success) return match.Groups["part1"].Value + match.Groups["part2"].Value;
-
-        // Возврат null, если ключ не найден
-        return null;
-    }
-
-    /// <summary>
-    /// Получает поисковый ключ, необходимый для выполнения запросов к API HowLongToBeat.
-    /// </summary>
-    /// <returns>Поисковый ключ.</returns>
-    private async Task<string?> FetchSearchKeyAsync()
+    /// <returns>Токен аутентификации.</returns>
+    private async Task<string?> FetchAuthTokenAsync()
     {
         try
         {
-            var response = await _httpClient.GetStringAsync(BaseUrl).ConfigureAwait(false);
-            var scriptUrl = ExtractScriptUrl(response);
-
-            if (string.IsNullOrEmpty(scriptUrl)) return null;
-
-            return await FetchKeyFromScriptAsync(scriptUrl).ConfigureAwait(false);
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var initUrl = $"{SearchInitUrl}?t={timestamp}";
+            
+            var response = await _httpClient.GetAsync(initUrl).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            
+            var jsonResponse = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            
+            using var document = JsonDocument.Parse(jsonResponse);
+            if (document.RootElement.TryGetProperty("token", out var tokenElement))
+            {
+                return tokenElement.GetString();
+            }
+            
+            return null;
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Ошибка при получении поискового ключа для HowLongToBeat.");
+            Log.Error(ex, "Ошибка при получении токена аутентификации для HowLongToBeat.");
             return null;
         }
     }
-
-    [GeneratedRegex("\"/api/search/\"\\.concat\\(\"([a-zA-Z0-9]+)\"\\)", RegexOptions.Compiled)]
-    private static partial Regex SearchKeyRegex();
-
-    [GeneratedRegex("\"/api/find/\"\\.concat\\(\"(?<part1>[a-zA-Z0-9]+)\"\\)\\.concat\\(\"(?<part2>[a-zA-Z0-9]+)\"\\)", RegexOptions.Compiled)]
-    private static partial Regex SearchKeyRegex2();
-
-    [GeneratedRegex("\"/api/seek/\"\\.concat\\(\"(?<part1>[a-zA-Z0-9]+)\"\\)\\.concat\\(\"(?<part2>[a-zA-Z0-9]+)\"\\)", RegexOptions.Compiled)]
-    private static partial Regex SearchKeyRegex3();
 }

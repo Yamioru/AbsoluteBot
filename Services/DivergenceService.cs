@@ -9,7 +9,7 @@ namespace AbsoluteBot.Services;
 /// </summary>
 public class DivergenceService : IAsyncInitializable
 {
-    private const decimal InitialDivergence = 0.456923m;
+    private const decimal InitialDivergence = 0.456914m;
     private DateTime _anchorUtc;
     private DateTime _lastGeneratedDateUtc;
     private decimal _lastGeneratedValue;
@@ -39,8 +39,7 @@ public class DivergenceService : IAsyncInitializable
         }
 
         // === Якорная дата (от которой считаются интервалы) ===
-        // 29 октября 2025 года, UTC.
-        _anchorUtc = new DateTime(2025, 10, 29, 0, 0, 0, DateTimeKind.Utc);
+        _anchorUtc = new DateTime(2026, 02, 03, 0, 0, 0, DateTimeKind.Utc);
 
         _lastGeneratedDateUtc = _anchorUtc;
         _lastGeneratedValue = InitialDivergence;

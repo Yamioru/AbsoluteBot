@@ -18,7 +18,7 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
     private const string UserGeminiName = "user";
     private const int MaxOutputTokens = 2000;
     private const double TopP = 0.95;
-    private const double InitialTemperature = 1.6;
+    private const double InitialTemperature = 0.8;
     private const int MaxGenerationAttempts = 3;
     private const int DelayBetweenAttempts = 500;
     private const string CategorySexuallyExplicit = "HARM_CATEGORY_SEXUALLY_EXPLICIT";

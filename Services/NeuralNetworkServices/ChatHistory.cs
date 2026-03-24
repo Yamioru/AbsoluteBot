@@ -16,8 +16,7 @@ public class ChatHistory
     private const int SaveThreshold = 20; // Каждые сколько сообщений история чата сохраняется
     private const int RecentMessageCount = 7; // Сколько последних сообщений считаются последними сообщениями в чате
 
-    private static readonly Regex _placeholderRegex = new(@"\{(?<key>[^\{\}]+)\}",
-        RegexOptions.Compiled);
+    private static readonly Regex _placeholderRegex = new(@"\{(?<key>[^\{\}]+)\}", RegexOptions.Compiled);
 
     private readonly JArray _messages = new();
     private readonly SemaphoreSlim _fileSemaphore = new(1, 1);
