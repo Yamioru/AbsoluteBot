@@ -1,11 +1,15 @@
-﻿using AbsoluteBot.Chat;
+using AbsoluteBot.Chat;
 using AbsoluteBot.Chat.Commands;
 using AbsoluteBot.Chat.Commands.Registry;
 using AbsoluteBot.Services.ScheduledTasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Serilog.Events;
 using Serilog.Filters;
+using System.Text.Json;
 
 namespace AbsoluteBot;
 
@@ -28,6 +32,10 @@ public class Program
             // Настройка служб
             var serviceProvider = ConfigureServices();
 
+            // Запуск HTTP-сервера, чтобы приложение отвечало по домену VDS
+            var webApplication = BuildWebApplication();
+            await webApplication.StartAsync().ConfigureAwait(false);
+
             // Запуск чат-бота и инициализация сервисов
             await StartChatBot(serviceProvider).ConfigureAwait(false);
 
@@ -48,6 +56,57 @@ public class Program
         {
             await Log.CloseAndFlushAsync().ConfigureAwait(false);
         }
+    }
+
+    private static WebApplication BuildWebApplication()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://0.0.0.0:5000");
+
+        var app = builder.Build();
+
+        app.MapPost("/Sobeka", async (HttpContext context) =>
+        {
+            // 1. Читаем JSON от Яндекса
+            using var reader = new StreamReader(context.Request.Body);
+            var body = await reader.ReadToEndAsync();
+
+            // Используем JsonDocument для простоты, чтобы не создавать много классов
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+
+            // Достаем текст, который сказал пользователь
+            var command = root.GetProperty("request").GetProperty("command").GetString() ?? "";
+            var normalizedText = command.Trim().ToLowerInvariant();
+
+            // 2. Логика ответа
+            string replyText = "Я не знаю, что ответить";
+            if (normalizedText.Contains("привет"))
+            {
+                replyText = "Пока!";
+            }
+            else if (string.IsNullOrEmpty(normalizedText))
+            {
+                replyText = "Привет! Я слушаю. Скажи мне что-нибудь.";
+            }
+
+            // 3. Формируем ответ строго по протоколу Яндекса
+            var responseJson = new
+            {
+                response = new
+                {
+                    text = replyText,
+                    tts = replyText, // Текст для озвучки (можно добавить паузы или ударения)
+                    end_session = false // Если true - Алиса закроет навык после этой фразы
+                },
+                version = "1.0"
+            };
+
+            // Возвращаем JSON
+            return Results.Json(responseJson);
+        });
+
+        return app;
     }
 
     private static void ConfigureLogger()
@@ -148,5 +207,27 @@ public class Program
     private static async Task WaitForShutdownSignalAsync()
     {
         await ShutdownCompletionSource.Task.ConfigureAwait(false);
+    }
+
+    private static async Task<string> ExtractRequestTextAsync(HttpRequest request)
+    {
+        if (request.Query.TryGetValue("text", out var queryText) && !string.IsNullOrWhiteSpace(queryText))
+            return queryText.ToString();
+
+        var pathText = request.Path.Value?.Trim('/');
+        if (!string.IsNullOrWhiteSpace(pathText))
+            return pathText;
+
+        if (request.ContentLength is > 0)
+        {
+            request.EnableBuffering();
+            using var reader = new StreamReader(request.Body, leaveOpen: true);
+            var bodyText = await reader.ReadToEndAsync().ConfigureAwait(false);
+            request.Body.Position = 0;
+            if (!string.IsNullOrWhiteSpace(bodyText))
+                return bodyText;
+        }
+
+        return string.Empty;
     }
 }
