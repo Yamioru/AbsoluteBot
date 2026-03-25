@@ -6,7 +6,7 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 /// <summary>
 ///     Команда для получение мудрости из случайного или выбранного аниме.
 /// </summary>
-public class AnimeWisdomCommand(ChatGptService chatGptService) : BaseCommand, IParameterized
+public class AnimeWisdomCommand(AskGeminiService askGeminiService) : BaseCommand, IParameterized
 {
     public override int Priority => 402;
     public override string Description => "выводит мудрость из аниме.";
@@ -21,7 +21,7 @@ public class AnimeWisdomCommand(ChatGptService chatGptService) : BaseCommand, IP
             ? "Приведи мудрую цитату персонажа из случайного аниме, укажи имя персонажа в формате: \"Цитата\" – Имя персонажа;"
             : $"Приведи мудрую цитату персонажа из аниме {anime}, укажи имя персонажа в формате: \"Цитата\" – Имя персонажа;";
 
-        return await chatGptService.AskChatGptAsync(query, command.Context.MaxMessageLength).ConfigureAwait(false) ??
+        return await askGeminiService.AskGeminiResponseAsync(query, command.Context.MaxMessageLength).ConfigureAwait(false) ??
                "Не удалось получить анимудрость.";
     }
 

@@ -1,6 +1,7 @@
 using AbsoluteBot.Chat;
 using AbsoluteBot.Chat.Commands;
 using AbsoluteBot.Chat.Commands.Registry;
+using AbsoluteBot.Services.TextChat;
 using AbsoluteBot.Services.ScheduledTasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -10,6 +11,7 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Filters;
 using System.Text.Json;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace AbsoluteBot;
 
@@ -32,10 +34,6 @@ public class Program
             // Настройка служб
             var serviceProvider = ConfigureServices();
 
-            // Запуск HTTP-сервера, чтобы приложение отвечало по домену VDS
-            var webApplication = BuildWebApplication();
-            await webApplication.StartAsync().ConfigureAwait(false);
-
             // Запуск чат-бота и инициализация сервисов
             await StartChatBot(serviceProvider).ConfigureAwait(false);
 
@@ -44,6 +42,10 @@ public class Program
 
             // Запуск периодических задач
             StartScheduledTasks(serviceProvider);
+
+            // Запуск HTTP-сервера, чтобы приложение отвечало по домену VDS
+            var webApplication = BuildWebApplication(serviceProvider);
+            await webApplication.StartAsync().ConfigureAwait(false);
 
             // Ожидание сигнала завершения
             await WaitForShutdownSignalAsync().ConfigureAwait(false);
@@ -58,12 +60,14 @@ public class Program
         }
     }
 
-    private static WebApplication BuildWebApplication()
+    private static WebApplication BuildWebApplication(ServiceProvider serviceProvider)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://0.0.0.0:5000");
 
         var app = builder.Build();
+
+        var textCommandService = serviceProvider.GetRequiredService<TextCommandService>();
 
         app.MapPost("/Sobeka", async (HttpContext context) =>
         {
@@ -79,24 +83,16 @@ public class Program
             var command = root.GetProperty("request").GetProperty("command").GetString() ?? "";
             var normalizedText = command.Trim().ToLowerInvariant();
 
-            // 2. Логика ответа
-            string replyText = "Я не знаю, что ответить";
-            if (normalizedText.Contains("привет"))
-            {
-                replyText = "Пока!";
-            }
-            else if (string.IsNullOrEmpty(normalizedText))
-            {
-                replyText = "Привет! Я слушаю. Скажи мне что-нибудь.";
-            }
+
+            var response = await textCommandService.ProcessAsync(normalizedText, "Свет").ConfigureAwait(false);
 
             // 3. Формируем ответ строго по протоколу Яндекса
             var responseJson = new
             {
                 response = new
                 {
-                    text = replyText,
-                    tts = replyText, // Текст для озвучки (можно добавить паузы или ударения)
+                    text = response,
+                    tts = response, // Текст для озвучки (можно добавить паузы или ударения)
                     end_session = false // Если true - Алиса закроет навык после этой фразы
                 },
                 version = "1.0"

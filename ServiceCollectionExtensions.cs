@@ -1,4 +1,4 @@
-﻿using AbsoluteBot.Chat;
+using AbsoluteBot.Chat;
 using AbsoluteBot.Chat.Commands;
 using AbsoluteBot.Chat.Commands.AdminCommands;
 using AbsoluteBot.Chat.Commands.Registry;
@@ -17,6 +17,7 @@ using AbsoluteBot.Services.GoogleSheetsServices;
 using AbsoluteBot.Services.MediaServices;
 using AbsoluteBot.Services.NeuralNetworkServices;
 using AbsoluteBot.Services.ScheduledTasks;
+using AbsoluteBot.Services.TextChat;
 using AbsoluteBot.Services.UserManagementServices;
 using AbsoluteBot.Services.UtilityServices;
 using Microsoft.Extensions.DependencyInjection;
@@ -253,7 +254,8 @@ public static class ServiceCollectionExtensions
             .AddSingleton<ClipsService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ClipsService>())
             .AddSingleton<WisdomService>()
-            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<WisdomService>());
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<WisdomService>())
+            .AddSingleton<TextCommandService>();
     }
 
     /// <summary>
@@ -303,7 +305,7 @@ public static class ServiceCollectionExtensions
         return services
             .AddSingleton<IChatCommand, AnimeWisdomCommand>()
             .AddSingleton<IChatCommand, AddBirthdayCommand>()
-            .AddSingleton<IChatCommand, AskCommand>()
+            //.AddSingleton<IChatCommand, AskCommand>()
             .AddSingleton<IChatCommand, AskGeminiCommand>()
             .AddSingleton<IChatCommand, AskGeminiWithGoogleSearchCommand>()
             .AddSingleton<IChatCommand, AskMailRuCommand>()
