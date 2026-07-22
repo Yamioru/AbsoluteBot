@@ -1,8 +1,9 @@
-using System.Text;
-using System.Text.Json;
 using AbsoluteBot.Helpers;
 using AbsoluteBot.Models;
 using Serilog;
+using System.Drawing.Drawing2D;
+using System.Text;
+using System.Text.Json;
 
 namespace AbsoluteBot.Services;
 
@@ -11,8 +12,8 @@ namespace AbsoluteBot.Services;
 /// </summary>
 public class HowLongToBeatService
 {
-    private const string SearchUrl = "https://howlongtobeat.com/api/search/";
-    private const string SearchInitUrl = "https://howlongtobeat.com/api/search/init";
+    private const string SearchUrl = "https://howlongtobeat.com/api/find/";
+    private const string SearchInitUrl = "https://howlongtobeat.com/api/find/init";
     private const string BaseUrl = "https://howlongtobeat.com";
     private const string AcceptLanguageHeader = "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7";
     private const string AcceptHeader = "*/*";
@@ -20,7 +21,7 @@ public class HowLongToBeatService
     private const string OriginHeader = "https://howlongtobeat.com";
     private const string RefererHeader = "https://howlongtobeat.com";
     private readonly HttpClient _httpClient;
-
+    private record AuthData(string? Token, string? HpKey, string? HpVal);
     public HowLongToBeatService(HttpClient httpClient)
     {
         _httpClient = httpClient;
@@ -42,13 +43,13 @@ public class HowLongToBeatService
         try
         {
             var cleanedGameName = CleanGameName(gameName);
-            var authToken = await FetchAuthTokenAsync().ConfigureAwait(false);
+            var authData = await FetchAuthDataAsync().ConfigureAwait(false);
 
-            if (string.IsNullOrEmpty(authToken)) return 0;
+            if (string.IsNullOrEmpty(authData?.Token)) return 0;
 
-            var searchRequest = BuildSearchRequest(cleanedGameName);
+            var searchRequest = BuildSearchRequest(cleanedGameName, authData.HpKey, authData.HpVal);
 
-            var gameData = await FetchGameDataAsync(searchRequest, authToken).ConfigureAwait(false);
+            var gameData = await FetchGameDataAsync(searchRequest, authData).ConfigureAwait(false);
 
             return ExtractGameDuration(gameData);
         }
@@ -64,15 +65,15 @@ public class HowLongToBeatService
     /// </summary>
     /// <param name="gameName">Название игры.</param>
     /// <returns>Объект запроса для поиска игры.</returns>
-    private static object BuildSearchRequest(string gameName)
+    private static object BuildSearchRequest(string gameName, string? hpKey, string? hpVal)
     {
-        return new
+        var request = new Dictionary<string, object>
         {
-            searchType = "games",
-            searchTerms = gameName.Split(' '),
-            searchPage = 1,
-            size = 1,
-            searchOptions = new
+            ["searchType"] = "games",
+            ["searchTerms"] = gameName.Split(' '),
+            ["searchPage"] = 1,
+            ["size"] = 1,
+            ["searchOptions"] = new
             {
                 games = new
                 {
@@ -80,25 +81,27 @@ public class HowLongToBeatService
                     platform = "",
                     sortCategory = "popular",
                     rangeCategory = "main",
-                    rangeTime = new {min = (int?) null, max = (int?) null},
-                    gameplay = new {perspective = "", flow = "", genre = "", difficulty = ""},
-                    rangeYear = new {min = "", max = ""},
+                    rangeTime = new { min = (int?)null, max = (int?)null },
+                    gameplay = new { perspective = "", flow = "", genre = "", difficulty = "" },
+                    rangeYear = new { min = "", max = "" },
                     modifier = ""
                 },
-                users = new
-                {
-                    sortCategory = "postcount"
-                },
-                lists = new
-                {
-                    sortCategory = "follows"
-                },
+                users = new { sortCategory = "postcount" },
+                lists = new { sortCategory = "follows" },
                 filter = "",
                 sort = 0,
                 randomizer = 0
             },
-            useCache = false
+            ["useCache"] = false
         };
+
+        // Добавляем динамическое поле, если оно пришло из init
+        if (!string.IsNullOrEmpty(hpKey))
+        {
+            request[hpKey] = hpVal ?? "";
+        }
+
+        return request;
     }
 
     /// <summary>
@@ -135,9 +138,9 @@ public class HowLongToBeatService
     /// Выполняет запрос к API HowLongToBeat для получения данных об игре.
     /// </summary>
     /// <param name="searchRequest">Запрос для поиска игры.</param>
-    /// <param name="authToken">Токен аутентификации.</param>
+    /// <param name="authData">Данные аутентификации.</param>
     /// <returns>Данные о результатах поиска игры.</returns>
-    private async Task<HowLongToBeatSearchResponse?> FetchGameDataAsync(object searchRequest, string authToken)
+    private async Task<HowLongToBeatSearchResponse?> FetchGameDataAsync(object searchRequest, AuthData authData)
     {
         var content = new StringContent(JsonSerializer.Serialize(searchRequest), Encoding.UTF8, "application/json");
         
@@ -145,8 +148,10 @@ public class HowLongToBeatService
         {
             Content = content
         };
-        request.Headers.Add("x-auth-token", authToken);
-        
+        request.Headers.Add("x-auth-token", authData.Token);
+        request.Headers.Add("x-hp-key", authData.HpKey);
+        request.Headers.Add("x-hp-val", authData.HpVal);
+
         var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
@@ -155,32 +160,32 @@ public class HowLongToBeatService
     }
 
     /// <summary>
-    /// Получает токен аутентификации, необходимый для выполнения запросов к API HowLongToBeat.
+    /// Извлекает Token, HpKey и HpVal из API.
     /// </summary>
-    /// <returns>Токен аутентификации.</returns>
-    private async Task<string?> FetchAuthTokenAsync()
+    private async Task<AuthData?> FetchAuthDataAsync()
     {
         try
         {
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var initUrl = $"{SearchInitUrl}?t={timestamp}";
-            
+
             var response = await _httpClient.GetAsync(initUrl).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
-            
+
             var jsonResponse = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            
+
             using var document = JsonDocument.Parse(jsonResponse);
-            if (document.RootElement.TryGetProperty("token", out var tokenElement))
-            {
-                return tokenElement.GetString();
-            }
-            
-            return null;
+            var root = document.RootElement;
+
+            return new AuthData(
+                Token: root.TryGetProperty("token", out var t) ? t.GetString() : null,
+                HpKey: root.TryGetProperty("hpKey", out var k) ? k.GetString() : null,
+                HpVal: root.TryGetProperty("hpVal", out var v) ? v.GetString() : null
+            );
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Ошибка при получении токена аутентификации для HowLongToBeat.");
+            Log.Error(ex, "Ошибка при получении токена (init)");
             return null;
         }
     }

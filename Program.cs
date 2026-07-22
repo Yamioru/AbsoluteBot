@@ -1,17 +1,13 @@
+using System.Text.Json;
 using AbsoluteBot.Chat;
 using AbsoluteBot.Chat.Commands;
 using AbsoluteBot.Chat.Commands.Registry;
-using AbsoluteBot.Services.TextChat;
 using AbsoluteBot.Services.ScheduledTasks;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
+using AbsoluteBot.Services.TextChat;
+using Microsoft.Extensions.Caching.Memory;
 using Serilog;
 using Serilog.Events;
 using Serilog.Filters;
-using System.Text.Json;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace AbsoluteBot;
 
@@ -65,41 +61,54 @@ public class Program
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://0.0.0.0:5000");
 
+        // Не забудьте добавить builder.Services.AddMemoryCache() в Main!
         var app = builder.Build();
 
         var textCommandService = serviceProvider.GetRequiredService<TextCommandService>();
+        var cache = serviceProvider.GetRequiredService<IMemoryCache>();
 
         app.MapPost("/Sobeka", async (HttpContext context) =>
         {
-            // 1. Читаем JSON от Яндекса
             using var reader = new StreamReader(context.Request.Body);
             var body = await reader.ReadToEndAsync();
-
-            // Используем JsonDocument для простоты, чтобы не создавать много классов
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
 
-            // Достаем текст, который сказал пользователь
+            // 1. Извлекаем ID сессии, чтобы не путать ответы разных пользователей
+            var sessionId = root.GetProperty("session").GetProperty("session_id").GetString() ?? "default";
             var command = root.GetProperty("request").GetProperty("command").GetString() ?? "";
             var normalizedText = command.Trim().ToLowerInvariant();
 
-
-            var response = await textCommandService.ProcessAsync(normalizedText, "Свет").ConfigureAwait(false);
-
-            // 3. Формируем ответ строго по протоколу Яндекса
-            var responseJson = new
+            // 2. Проверяем, нет ли у нас готового ответа с прошлого «подвисшего» запроса
+            if (cache.TryGetValue(sessionId, out string savedResponse))
             {
-                response = new
-                {
-                    text = response,
-                    tts = response, // Текст для озвучки (можно добавить паузы или ударения)
-                    end_session = false // Если true - Алиса закроет навык после этой фразы
-                },
-                version = "1.0"
-            };
+                cache.Remove(sessionId); // Удаляем, так как сейчас мы его отдадим
+                return Results.Json(CreateAliceResponse(savedResponse));
+            }
 
-            // Возвращаем JSON
-            return Results.Json(responseJson);
+            // 3. Запускаем задачу обработки, но ограничиваем её по времени
+            var processTask = textCommandService.ProcessAsync(normalizedText, "Свет");
+            var timeoutTask = Task.Delay(2500); // 2.5 секунды
+
+            var completedTask = await Task.WhenAny(processTask, timeoutTask);
+
+            if (completedTask == processTask)
+            {
+                // Успели вовремя!
+                var result = await processTask;
+                return Results.Json(CreateAliceResponse(result));
+            }
+
+            // Не успели! 
+            // Запускаем фоновое продолжение: когда задача доделается, сохраняем в кэш
+            _ = processTask.ContinueWith(t =>
+            {
+                if (t.IsCompletedSuccessfully)
+                    // Сохраняем результат на 5 минут (хватит, чтобы пользователь спросил еще раз)
+                    cache.Set(sessionId, t.Result, TimeSpan.FromMinutes(5));
+            });
+
+            return Results.Json(CreateAliceResponse("Ща, погоди"));
         });
 
         return app;
@@ -132,12 +141,13 @@ public class Program
     }
 
     /// <summary>
-    ///     Настраивает все необходимые службы и возвращает ServiceProvider.
+    /// Настраивает все необходимые службы и возвращает ServiceProvider.
     /// </summary>
     /// <returns>Поставщик служб с зарегистрированными зависимостями.</returns>
     private static ServiceProvider ConfigureServices()
     {
         return new ServiceCollection()
+            .AddMemoryCache()
             .AddLogging(loggingBuilder =>
                 loggingBuilder.AddSerilog(dispose: true)) // Настройка логирования через Serilog
             .ConfigureHttpClients() // Конфигурация Http-клиентов
@@ -146,8 +156,23 @@ public class Program
             .BuildServiceProvider(); // Построение поставщика служб
     }
 
+// Вспомогательный метод для формирования структуры ответа
+    private static object CreateAliceResponse(string text)
+    {
+        return new
+        {
+            response = new
+            {
+                text,
+                tts = text,
+                end_session = false
+            },
+            version = "1.0"
+        };
+    }
+
     /// <summary>
-    ///     Регистрация команд, реализующих интерфейс IChatCommand.
+    /// Регистрация команд, реализующих интерфейс IChatCommand.
     /// </summary>
     /// <param name="serviceProvider">Поставщик служб.</param>
     private static void RegisterCommands(ServiceProvider serviceProvider)
@@ -158,7 +183,7 @@ public class Program
     }
 
     /// <summary>
-    ///     Настраивает обработчики завершения приложения, такие как Ctrl+C или завершение процесса.
+    /// Настраивает обработчики завершения приложения, такие как Ctrl+C или завершение процесса.
     /// </summary>
     private static void SetupApplicationShutdown()
     {
@@ -177,7 +202,7 @@ public class Program
     }
 
     /// <summary>
-    ///     Запускает чат-бот.
+    /// Запускает чат-бот.
     /// </summary>
     /// <param name="serviceProvider">Поставщик служб.</param>
     private static async Task StartChatBot(ServiceProvider serviceProvider)
@@ -188,7 +213,7 @@ public class Program
     }
 
     /// <summary>
-    ///     Запускает периодические задачи.
+    /// Запускает периодические задачи.
     /// </summary>
     /// <param name="serviceProvider">Поставщик служб.</param>
     private static void StartScheduledTasks(ServiceProvider serviceProvider)
@@ -198,32 +223,10 @@ public class Program
     }
 
     /// <summary>
-    ///     Ожидает сигнала завершения работы приложения.
+    /// Ожидает сигнала завершения работы приложения.
     /// </summary>
     private static async Task WaitForShutdownSignalAsync()
     {
         await ShutdownCompletionSource.Task.ConfigureAwait(false);
-    }
-
-    private static async Task<string> ExtractRequestTextAsync(HttpRequest request)
-    {
-        if (request.Query.TryGetValue("text", out var queryText) && !string.IsNullOrWhiteSpace(queryText))
-            return queryText.ToString();
-
-        var pathText = request.Path.Value?.Trim('/');
-        if (!string.IsNullOrWhiteSpace(pathText))
-            return pathText;
-
-        if (request.ContentLength is > 0)
-        {
-            request.EnableBuffering();
-            using var reader = new StreamReader(request.Body, leaveOpen: true);
-            var bodyText = await reader.ReadToEndAsync().ConfigureAwait(false);
-            request.Body.Position = 0;
-            if (!string.IsNullOrWhiteSpace(bodyText))
-                return bodyText;
-        }
-
-        return string.Empty;
     }
 }

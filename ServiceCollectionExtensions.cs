@@ -336,9 +336,11 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IChatCommand, MultipleSpoilerImageCommand>()
             .AddSingleton<IChatCommand, RemindCommand>()
             .AddSingleton<IChatCommand, RemoveBirthdayCommand>()
+            .AddSingleton<IChatCommand, SbtiCommand>()
             .AddSingleton<IChatCommand, TranslateCommand>()
             .AddSingleton<IChatCommand, VideoCommand>()
             .AddSingleton<IChatCommand, WhoMbtiCommand>()
+            .AddSingleton<IChatCommand, WhoSbtiCommand>()
             .AddSingleton<IChatCommand, WisdomCommand>()
             .AddSingleton<IChatCommand, HolidayCommand>()
             .AddSingleton<MentionCommand>()
@@ -360,6 +362,10 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<MbtiService>())
             .AddSingleton<JsonMbtiCharacterCatalogService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<JsonMbtiCharacterCatalogService>())
+            .AddSingleton<SbtiService>()
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<SbtiService>())
+            .AddSingleton<JsonSbtiCharacterCatalogService>()
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<JsonSbtiCharacterCatalogService>())
             .AddSingleton<RoleService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<RoleService>());
     }
