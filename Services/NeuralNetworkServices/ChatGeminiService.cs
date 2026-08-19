@@ -118,7 +118,7 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
     ///     только текст.
     /// </param>
     /// <returns>Ответ от модели или null в случае ошибки.</returns>
-    public async Task<string?> ChatAsync(string userMessage, ReplyInfo? replyInfo, string platform, string? base64Image = null)
+    public virtual async Task<string?> ChatAsync(string userMessage, ReplyInfo? replyInfo, string platform, string? base64Image = null)
     {
         return await ExecuteWithSemaphoreAsync(async () =>
         {
@@ -148,7 +148,7 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
     /// <param name="userMessages">Коллекция сообщений пользователя.</param>
     /// <param name="platform">Платформа для общения (например, Discord, Telegram).</param>
     /// <returns>Ответ от модели или null в случае ошибки.</returns>
-    public async Task<string?> ChatAsync(IEnumerable<string> userMessages, string platform)
+    public virtual async Task<string?> ChatAsync(IEnumerable<string> userMessages, string platform)
     {
         return await ExecuteWithSemaphoreAsync(async () =>
         {
@@ -176,7 +176,7 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
     /// </summary>
     /// <param name="platform">Название платформы (например, Discord, Telegram).</param>
     /// <returns>True, если история успешно очищена, иначе false.</returns>
-    public async Task<bool> ClearPlatformChatHistoryAsync(string platform)
+    public virtual async Task<bool> ClearPlatformChatHistoryAsync(string platform)
     {
         try
         {
@@ -391,8 +391,8 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
     {
         if (_platformChatHistories.TryGetValue(platform, out var value)) return value;
         var chatHistory = new ChatHistory();
-        await chatHistory.LoadInitialMessagesFromFileAsync("initialUserMessage.txt",
-            "initialModelMessage.txt", platform).ConfigureAwait(false);
+        await chatHistory.LoadInitialMessagesFromFileAsync(DataPaths.Get("initialUserMessage.txt"),
+            DataPaths.Get("initialModelMessage.txt"), platform).ConfigureAwait(false);
         value = chatHistory;
         _platformChatHistories[platform] = value;
 
@@ -462,7 +462,7 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
         foreach (var platform in platforms)
         {
             var chatHistory = new ChatHistory();
-            await chatHistory.LoadInitialMessagesFromFileAsync("initialUserMessage.txt", "initialModelMessage.txt", platform).ConfigureAwait(false);
+            await chatHistory.LoadInitialMessagesFromFileAsync(DataPaths.Get("initialUserMessage.txt"), DataPaths.Get("initialModelMessage.txt"), platform).ConfigureAwait(false);
             _platformChatHistories[platform] = chatHistory;
         }
     }

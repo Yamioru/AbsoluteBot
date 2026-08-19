@@ -14,7 +14,7 @@ namespace AbsoluteBot.Services.GoogleSheetsServices;
 /// </summary>
 public class GoogleSheetsBaseService(ConfigService configService) : IAsyncInitializable
 {
-    private const string CredentialsFilePath = "google_sheets_credentials.json";
+    private static string CredentialsFilePath => DataPaths.Get("google_sheets_credentials.json");
     private const int SheetNotFound = -1;
 
     private const SpreadsheetsResource.ValuesResource.GetRequest.ValueRenderOptionEnum ValueRenderOptionFormula =

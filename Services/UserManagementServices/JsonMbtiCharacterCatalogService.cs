@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services.UserManagementServices;
@@ -10,7 +11,7 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// </summary>
 public class JsonMbtiCharacterCatalogService : IAsyncInitializable
 {
-    private const string FilePath = "mbti_characters.json";
+    private static string FilePath => DataPaths.Get("mbti_characters.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
     private static readonly JsonSerializerOptions JsonOptions = new()

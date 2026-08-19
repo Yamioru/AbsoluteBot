@@ -33,7 +33,7 @@ public class ChatGptService(HttpClient httpClient, ConfigService configService) 
     /// <param name="message">Сообщение, отправляемое в ChatGPT.</param>
     /// <param name="length">Максимальная длина ответа.</param>
     /// <returns>Сгенерированный ответ или <c>null</c> в случае ошибки.</returns>
-    public async Task<string?> AskChatGptAsync(string message, int length)
+    public virtual async Task<string?> AskChatGptAsync(string message, int length)
     {
         if (_gptService == null) return null;
 

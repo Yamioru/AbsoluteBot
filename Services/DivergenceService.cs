@@ -49,7 +49,7 @@ public class DivergenceService : IAsyncInitializable
     /// Возвращает текущее детерминированное значение отклонения (например "0.456923").
     /// При каждом запуске программы для одной и той же даты будет одно и то же значение.
     /// </summary>
-    public string GetCurrentDivergence()
+    public virtual string GetCurrentDivergence()
     {
         var nowUtc = DateTime.UtcNow;
 

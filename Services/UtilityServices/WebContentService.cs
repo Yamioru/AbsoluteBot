@@ -32,7 +32,7 @@ public partial class WebContentService
     /// </summary>
     /// <param name="urls">Список URL для загрузки контента.</param>
     /// <returns>Список извлечённого текстового содержимого с каждой страницы или <c>null</c> в случае ошибки.</returns>
-    public async Task<List<string>?> GetWebContentAsync(List<string> urls)
+    public virtual async Task<List<string>?> GetWebContentAsync(List<string> urls)
     {
         var contentList = new List<string>();
 

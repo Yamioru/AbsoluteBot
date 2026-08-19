@@ -15,7 +15,7 @@ namespace AbsoluteBot.Services;
 public class GameProgressService
     (GameGoogleSheetsService gameGoogleSheetsService, ConfigService configService, HowLongToBeatService howLongToBeatService) : IAsyncInitializable
 {
-    private const string ProgressFilePath = "game_progress.json";
+    private static string ProgressFilePath => DataPaths.Get("game_progress.json");
     private const int TimeThresholdForUpdate = 120;
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
@@ -104,7 +104,7 @@ public class GameProgressService
     ///     Генерирует сообщение о текущем прогрессе игры.
     /// </summary>
     /// <returns>Сообщение с информацией о прогрессе игры.</returns>
-    public async Task<string> GenerateProgressMessageAsync()
+    public virtual async Task<string> GenerateProgressMessageAsync()
     {
         try
         {

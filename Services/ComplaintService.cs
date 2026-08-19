@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services;
@@ -9,7 +10,7 @@ namespace AbsoluteBot.Services;
 /// </summary>
 public class ComplaintService : IAsyncInitializable
 {
-    private const string FilePath = "complaints.json";
+    private static string FilePath => DataPaths.Get("complaints.json");
     private const int DefaultComplaintCount = 10;
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
@@ -30,7 +31,7 @@ public class ComplaintService : IAsyncInitializable
     /// </summary>
     /// <param name="complaint">Текст жалобы, которую нужно добавить.</param>
     /// <returns>Возвращает <c>true</c>, если жалоба была успешно добавлена; <c>false</c> в случае ошибки.</returns>
-    public async Task<bool> AddComplaintAsync(string complaint)
+    public virtual async Task<bool> AddComplaintAsync(string complaint)
     {
         try
         {
@@ -50,7 +51,7 @@ public class ComplaintService : IAsyncInitializable
     /// </summary>
     /// <param name="count">Количество последних жалоб для возврата. По умолчанию <see cref="DefaultComplaintCount" />.</param>
     /// <returns>Список последних жалоб в виде строк.</returns>
-    public List<string> GetLastComplaints(int count = DefaultComplaintCount)
+    public virtual List<string> GetLastComplaints(int count = DefaultComplaintCount)
     {
         return _complaints.TakeLast(count).ToList();
     }

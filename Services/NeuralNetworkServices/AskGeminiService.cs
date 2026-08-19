@@ -16,7 +16,7 @@ public class AskGeminiService(GeminiSettingsProvider settingsProvider)
     /// <param name="maxLength">Максимальная длина ответа в символах.</param>
     /// <param name="base64Image">Изображение в формате Base64.</param>
     /// <returns>Ответ модели или null, если возникла ошибка.</returns>
-    public async Task<string?> AskGeminiResponseAsync(string message, int maxLength, string? replyMessage = null, string? base64Image = null,
+    public virtual async Task<string?> AskGeminiResponseAsync(string message, int maxLength, string? replyMessage = null, string? base64Image = null,
         string instruction = null, double temperature = 1.0)
     {
         if (settingsProvider.ApiKeys == null || settingsProvider.ApiKeys.Count == 0)

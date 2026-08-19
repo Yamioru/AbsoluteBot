@@ -1,14 +1,13 @@
-﻿using System.Diagnostics;
-using System.Reflection;
-using AbsoluteBot.Chat.Context;
+﻿using AbsoluteBot.Chat.Context;
 using AbsoluteBot.Models;
+using AbsoluteBot.Services.UtilityServices;
 
 namespace AbsoluteBot.Chat.Commands.AdminCommands;
 
 /// <summary>
 ///     Команда перезагрузки приложения.
 /// </summary>
-public class RestartCommand : BaseCommand
+public class RestartCommand(IProcessController processController) : BaseCommand
 {
     public override int Priority => -11;
     public override string Name => "!перезагрузка";
@@ -22,21 +21,7 @@ public class RestartCommand : BaseCommand
 
     protected override Task<string> ExecuteLogicAsync(ParsedCommand command)
     {
-        Task.Run(RestartApplication);
+        Task.Run(processController.Restart);
         return Task.FromResult("Перезагрузка приложения...");
-    }
-
-    private static void RestartApplication()
-    {
-        var dllPath = Assembly.GetExecutingAssembly().Location;
-        var processStartInfo = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = dllPath,
-            UseShellExecute = false
-        };
-
-        Process.Start(processStartInfo);
-        Environment.Exit(0);
     }
 }

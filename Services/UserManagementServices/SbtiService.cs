@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services.UserManagementServices;
@@ -9,7 +10,7 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// </summary>
 public class SbtiService : IAsyncInitializable
 {
-    private const string FilePath = "sbti_data.json";
+    private static string FilePath => DataPaths.Get("sbti_data.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -62,7 +63,7 @@ public class SbtiService : IAsyncInitializable
         return SbtiDescriptions.TryGetValue(key, out var desc) ? desc : "Неизвестный архетип.";
     }
 
-    public string? GetSbtiForUser(string username)
+    public virtual string? GetSbtiForUser(string username)
     {
         return _sbtiData.TryGetValue(username.ToLower(), out var sbti) ? sbti : null;
     }
@@ -72,7 +73,7 @@ public class SbtiService : IAsyncInitializable
         return SbtiDescriptions.ContainsKey(sbti.Trim().ToUpper());
     }
 
-    public async Task<bool> SetSbtiForUserAsync(string username, string sbti)
+    public virtual async Task<bool> SetSbtiForUserAsync(string username, string sbti)
     {
         try
         {

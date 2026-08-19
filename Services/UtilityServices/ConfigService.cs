@@ -11,7 +11,7 @@ namespace AbsoluteBot.Services.UtilityServices;
 /// </summary>
 public class ConfigService : IAsyncInitializable
 {
-    private const string FilePath = "config.json";
+    private static string FilePath => DataPaths.Get("config.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
     private ConcurrentDictionary<string, object?> _config = new();
 
@@ -32,7 +32,7 @@ public class ConfigService : IAsyncInitializable
     ///     Возвращает все конфигурационные значения в виде словаря, с маскированием конфиденциальных данных.
     /// </summary>
     /// <returns>Словарь всех конфигурационных значений с маскированием.</returns>
-    public Dictionary<string, string> GetAllConfigValues()
+    public virtual Dictionary<string, string> GetAllConfigValues()
     {
         var censoredConfig = new Dictionary<string, string>();
 
@@ -81,7 +81,7 @@ public class ConfigService : IAsyncInitializable
     /// <param name="key">Ключ конфигурации.</param>
     /// <param name="value">Новое значение конфигурации.</param>
     /// <returns>Возвращает true, если операция прошла успешно, иначе false.</returns>
-    public async Task<bool> SetConfigValueAsync(string key, object value)
+    public virtual async Task<bool> SetConfigValueAsync(string key, object value)
     {
         await Semaphore.WaitAsync().ConfigureAwait(false);
         try

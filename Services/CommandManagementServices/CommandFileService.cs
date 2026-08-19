@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services.CommandManagementServices;
@@ -11,7 +12,7 @@ namespace AbsoluteBot.Services.CommandManagementServices;
 /// </summary>
 public static class CommandFileService
 {
-    private const string CommandFilePath = "commands.json";
+    private static string CommandFilePath => DataPaths.Get("commands.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
     private static readonly JsonSerializerOptions JsonOptions = new()

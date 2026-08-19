@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using AbsoluteBot.Models;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services.UserManagementServices;
@@ -10,7 +11,7 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// </summary>
 public class RoleService : IAsyncInitializable
 {
-    private const string FilePath = "user_roles.json";
+    private static string FilePath => DataPaths.Get("user_roles.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -39,7 +40,7 @@ public class RoleService : IAsyncInitializable
     /// </summary>
     /// <param name="username">Имя пользователя.</param>
     /// <returns>Роль пользователя.</returns>
-    public async Task<UserRole> GetUserRoleAsync(string username)
+    public virtual async Task<UserRole> GetUserRoleAsync(string username)
     {
         await Semaphore.WaitAsync().ConfigureAwait(false);
         try
@@ -73,7 +74,7 @@ public class RoleService : IAsyncInitializable
     ///     <c>true</c>, если роль была успешно назначена;
     ///     <c>false</c>, если попытка изменить роль администратора или произошла ошибка.
     /// </returns>
-    public async Task<bool> SetUserRoleAsync(string username, UserRole role)
+    public virtual async Task<bool> SetUserRoleAsync(string username, UserRole role)
     {
         await Semaphore.WaitAsync().ConfigureAwait(false);
         try

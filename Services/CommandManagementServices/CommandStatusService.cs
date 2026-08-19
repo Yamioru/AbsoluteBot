@@ -20,7 +20,7 @@ public class CommandStatusService : IAsyncInitializable
     ///     Возвращает все статусы команд.
     /// </summary>
     /// <returns>Коллекция всех статусов команд.</returns>
-    public ConcurrentDictionary<(string, string), bool> GetAllCommandStatuses()
+    public virtual ConcurrentDictionary<(string, string), bool> GetAllCommandStatuses()
     {
         return _commandStatuses;
     }
@@ -31,7 +31,7 @@ public class CommandStatusService : IAsyncInitializable
     /// <param name="commandName">Название команды.</param>
     /// <param name="platformName">Название платформы, для которой проверяется команда.</param>
     /// <returns>Возвращает true, если команда включена, иначе false.</returns>
-    public async Task<bool> IsCommandEnabled(string commandName, string platformName)
+    public virtual async Task<bool> IsCommandEnabled(string commandName, string platformName)
     {
         try
         {
@@ -60,7 +60,7 @@ public class CommandStatusService : IAsyncInitializable
     /// <param name="platformName">Название платформы.</param>
     /// <param name="isEnabled">Статус команды (включена/выключена).</param>
     /// <returns>Возвращает true, если операция прошла успешно, иначе false.</returns>
-    public async Task<bool> SetCommandStatusAsync(string commandName, string platformName, bool isEnabled)
+    public virtual async Task<bool> SetCommandStatusAsync(string commandName, string platformName, bool isEnabled)
     {
         try
         {

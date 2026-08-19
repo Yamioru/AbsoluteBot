@@ -16,7 +16,7 @@ public class CatImageService(HttpClient httpClient)
     ///     Получает случайное изображение кота с API Cataas.
     /// </summary>
     /// <returns>URL изображения кота или URL изображения кота-заглушки в случае ошибки.</returns>
-    public async Task<string> GetCatImageAsync()
+    public virtual async Task<string> GetCatImageAsync()
     {
         try
         {

@@ -1,4 +1,5 @@
 ﻿using System.Text.RegularExpressions;
+using AbsoluteBot.Services.UtilityServices;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Serilog;
@@ -12,7 +13,7 @@ namespace AbsoluteBot.Services.NeuralNetworkServices;
 public class ChatHistory
 {
     private const int MaxMessages = 200; // Сколько сообщений хранит бот в памяти
-    private const string FilePath = "ChatHistory_{0}.json";
+    private const string FilePathFormat = "ChatHistory_{0}.json";
     private const int SaveThreshold = 20; // Каждые сколько сообщений история чата сохраняется
     private const int RecentMessageCount = 7; // Сколько последних сообщений считаются последними сообщениями в чате
 
@@ -212,7 +213,7 @@ public class ChatHistory
             // Если файл существует и был изменен более 3 часов назад, загружается сохранённая история
             try
             {
-                var savedHistoryPath = string.Format(FilePath, platform);
+                var savedHistoryPath = DataPaths.Get(string.Format(FilePathFormat, platform));
                 if (File.Exists(savedHistoryPath))
                 {
                     var savedHistory = await File.ReadAllTextAsync(savedHistoryPath).ConfigureAwait(false);
@@ -360,7 +361,7 @@ public class ChatHistory
         try
         {
             var jsonHistory = JsonConvert.SerializeObject(_messages, Formatting.Indented);
-            await File.WriteAllTextAsync(string.Format(FilePath, platform), jsonHistory).ConfigureAwait(false);
+            await File.WriteAllTextAsync(DataPaths.Get(string.Format(FilePathFormat, platform)), jsonHistory).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

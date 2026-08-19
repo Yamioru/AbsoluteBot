@@ -27,7 +27,7 @@ public partial class FactService(HttpClient httpClient)
     ///     возвращает случайную статью с Википедии.
     /// </summary>
     /// <returns>Очищенный от HTML-тегов текст факта или статьи, либо null в случае ошибки.</returns>
-    public async Task<string?> GetFactAsync()
+    public virtual async Task<string?> GetFactAsync()
     {
         try
         {

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services;
@@ -10,7 +11,7 @@ namespace AbsoluteBot.Services;
 /// </summary>
 public class HolidaysService : IAsyncInitializable
 {
-    private const string FilePath = "holidays.json";
+    private static string FilePath => DataPaths.Get("holidays.json");
     private const string NoHolidayMessage = "Сегодня нет праздника.";
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
@@ -32,7 +33,7 @@ public class HolidaysService : IAsyncInitializable
     /// </summary>
     /// <param name="date">Дата в формате "дд.мм".</param>
     /// <returns>Название праздника или сообщение о том, что праздников нет.</returns>
-    public string GetHoliday(string date)
+    public virtual string GetHoliday(string date)
     {
         try
         {

@@ -36,6 +36,7 @@ public static class ServiceCollectionExtensions
     /// <returns>Коллекция сервисов с добавленными HttpClient сервисами.</returns>
     public static IServiceCollection ConfigureHttpClients(this IServiceCollection services)
     {
+        services.AddSingleton(_ => new HttpClient());
         services.AddHttpClient<IGoogleSearchDefinitionService, GoogleSearchDefinitionService>();
         return services;
     }
@@ -255,6 +256,8 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ClipsService>())
             .AddSingleton<WisdomService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<WisdomService>())
+            .AddSingleton<StreamChatterStatsService>()
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<StreamChatterStatsService>())
             .AddSingleton<TextCommandService>();
     }
 
@@ -387,6 +390,7 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<CensorshipService>())
             .AddSingleton<ConfigService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ConfigService>())
+            .AddSingleton<IProcessController, ProcessController>()
             .AddSingleton<UrlShortenerService>()
             .AddSingleton<LayoutCorrectionService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<LayoutCorrectionService>())

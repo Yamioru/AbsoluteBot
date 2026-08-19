@@ -21,14 +21,18 @@ namespace AbsoluteBot.Services.ChatServices.TwitchChat;
 ///     создание клипов и работу с сокращением URL.
 /// </summary>
 public class TwitchChatService(ConfigService configService, UrlShortenerService urlShortenerService, ICensorshipService censorshipService,
-        TwitchMessageHandler messageHandler, TwitchMessageDataProcessor messageDataProcessor, TwitchImageProcessor imageProcessor)
+        TwitchMessageHandler messageHandler, TwitchMessageDataProcessor messageDataProcessor, TwitchImageProcessor imageProcessor,
+        StreamChatterStatsService streamChatterStatsService)
     : IChatService, IDisposable, IUrlShorteningService, IAsyncInitializable, IChatImageService
 {
     private const int ReconnectDelayMilliseconds = 5000;
     public const int MaxMessageLength = 500;
     private const int MessagesAllowedInPeriod = 750;
     private const int ThrottlingPeriodSeconds = 30;
+    private readonly SemaphoreSlim _connectLock = new(1, 1);
+    private readonly TwitchMessageIdDeduplicator _messageIdDeduplicator = new();
     private readonly object _disposeLock = new();
+    private int _isReconnecting;
     private bool _isConfigured;
     private bool _isDisposed;
     private ClientOptions? _clientOptions;
@@ -101,23 +105,27 @@ public class TwitchChatService(ConfigService configService, UrlShortenerService 
     public async Task Connect()
     {
         if (!_isConfigured) return;
-        while (!_isDisposed)
-            try
-            {
-                var customClient = new WebSocketClient(_clientOptions);
-                _twitchClient = new TwitchClient(customClient);
-                _twitchClient.Initialize(_credentials, _channelName);
-
-                SubscribeToEvents(_twitchClient);
-                _twitchClient.Connect();
-                Log.ForContext("ConnectionEvent", true).Information("Соединение с Twitch установлено.");
-                break;
-            }
-            catch (Exception ex)
-            {
-                Log.ForContext("ConnectionEvent", true).Error(ex, "Ошибка подключения к Twitch. Повторная попытка.");
-                await Task.Delay(ReconnectDelayMilliseconds).ConfigureAwait(false);
-            }
+        await _connectLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            while (!_isDisposed)
+                try
+                {
+                    ReplaceTwitchClient();
+                    _twitchClient!.Connect();
+                    Log.ForContext("ConnectionEvent", true).Information("Соединение с Twitch установлено.");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Log.ForContext("ConnectionEvent", true).Error(ex, "Ошибка подключения к Twitch. Повторная попытка.");
+                    await Task.Delay(ReconnectDelayMilliseconds).ConfigureAwait(false);
+                }
+        }
+        finally
+        {
+            _connectLock.Release();
+        }
     }
 
     /// <summary>
@@ -145,8 +153,12 @@ public class TwitchChatService(ConfigService configService, UrlShortenerService 
         {
             if (_isDisposed) return;
             _isDisposed = true;
-            _twitchClient?.Disconnect();
-            _twitchClient = null;
+            if (_twitchClient != null)
+            {
+                UnsubscribeFromEvents(_twitchClient);
+                _twitchClient.Disconnect();
+                _twitchClient = null;
+            }
             GC.SuppressFinalize(this);
         }
     }
@@ -228,7 +240,9 @@ public class TwitchChatService(ConfigService configService, UrlShortenerService 
     {
         try
         {
+            if (!_messageIdDeduplicator.TryTake(e.ChatMessage.Id)) return;
             if (!messageDataProcessor.TryParseValidMessage(e.ChatMessage, this, out var messageText, out var context)) return;
+            await streamChatterStatsService.RecordMessageAsync(context.DisplayedName).ConfigureAwait(false);
             var processedMessage = await messageHandler.HandleMessageAsync(messageText, context).ConfigureAwait(false);
             // Вызов события для дальнейшей обработки
             MessageReceived?.Invoke(this, new MessageReceivedEventArgs(processedMessage, context));
@@ -245,11 +259,21 @@ public class TwitchChatService(ConfigService configService, UrlShortenerService 
     private async void OnClientDisconnected(object? sender, OnDisconnectedEventArgs e)
     {
         if (_isDisposed) return;
+        if (sender is ITwitchClient disconnected && !ReferenceEquals(disconnected, _twitchClient)) return;
+        if (Interlocked.CompareExchange(ref _isReconnecting, 1, 0) != 0) return;
 
-        Log.ForContext("ConnectionEvent", true).Warning($"Соединение с Twitch потеряно. Причина: {e}. Попытка переподключения...");
-        if (_twitchClient != null) UnsubscribeFromEvents(_twitchClient);
-        await Task.Delay(ReconnectDelayMilliseconds).ConfigureAwait(false);
-        await Connect().ConfigureAwait(false);
+        try
+        {
+            Log.ForContext("ConnectionEvent", true).Warning($"Соединение с Twitch потеряно. Причина: {e}. Попытка переподключения...");
+            if (_twitchClient != null) UnsubscribeFromEvents(_twitchClient);
+            await Task.Delay(ReconnectDelayMilliseconds).ConfigureAwait(false);
+            if (_isDisposed) return;
+            await Connect().ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isReconnecting, 0);
+        }
     }
 
     /// <summary>
@@ -330,6 +354,31 @@ public class TwitchChatService(ConfigService configService, UrlShortenerService 
             client.SendMessage(channel, message);
             return Task.CompletedTask;
         });
+    }
+
+    /// <summary>
+    ///     Отключает предыдущий Twitch-клиент и создаёт новый, чтобы не держать два IRC-подключения одновременно.
+    /// </summary>
+    private void ReplaceTwitchClient()
+    {
+        var previous = _twitchClient;
+        if (previous != null)
+        {
+            UnsubscribeFromEvents(previous);
+            try
+            {
+                previous.Disconnect();
+            }
+            catch (Exception ex)
+            {
+                Log.ForContext("ConnectionEvent", true).Warning(ex, "Ошибка при отключении предыдущего Twitch-клиента.");
+            }
+        }
+
+        var customClient = new WebSocketClient(_clientOptions);
+        _twitchClient = new TwitchClient(customClient);
+        _twitchClient.Initialize(_credentials, _channelName);
+        SubscribeToEvents(_twitchClient);
     }
 
     /// <summary>

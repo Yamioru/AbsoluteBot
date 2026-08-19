@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
+using AbsoluteBot.Services.UtilityServices;
 
 namespace AbsoluteBot.Services.UserManagementServices;
 
@@ -8,7 +9,7 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// </summary>
 public class JsonSbtiCharacterCatalogService : IAsyncInitializable
 {
-    private const string FilePath = "sbti_characters.json";
+    private static string FilePath => DataPaths.Get("sbti_characters.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new() {WriteIndented = true};
     private ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _map = new();

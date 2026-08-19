@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services.CommandManagementServices;
@@ -9,7 +10,7 @@ namespace AbsoluteBot.Services.CommandManagementServices;
 /// </summary>
 public class ExtraCommandsService : IAsyncInitializable
 {
-    private const string FilePath = "extra_commands.json";
+    private static string FilePath => DataPaths.Get("extra_commands.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -30,7 +31,7 @@ public class ExtraCommandsService : IAsyncInitializable
     /// <param name="command">Имя команды.</param>
     /// <param name="response">Ответ, который будет возвращен при вызове команды.</param>
     /// <returns><c>true</c>, если команда успешно добавлена или обновлена; иначе <c>false</c>.</returns>
-    public async Task<bool> AddOrUpdateCommandAsync(string command, string response)
+    public virtual async Task<bool> AddOrUpdateCommandAsync(string command, string response)
     {
         try
         {
@@ -60,7 +61,7 @@ public class ExtraCommandsService : IAsyncInitializable
     /// </summary>
     /// <param name="command">Имя команды.</param>
     /// <returns>Ответ команды или <c>null</c>, если команда не найдена.</returns>
-    public string? GetCommand(string command)
+    public virtual string? GetCommand(string command)
     {
         return _extraCommands.TryGetValue(command, out var result) ? result : null;
     }
@@ -70,7 +71,7 @@ public class ExtraCommandsService : IAsyncInitializable
     /// </summary>
     /// <param name="command">Имя команды.</param>
     /// <returns><c>true</c>, если команда была успешно удалена; иначе <c>false</c>.</returns>
-    public async Task<bool> RemoveCommandAsync(string command)
+    public virtual async Task<bool> RemoveCommandAsync(string command)
     {
         command = NormalizeCommand(command);
         if (!_extraCommands.TryRemove(command, out _)) return false;

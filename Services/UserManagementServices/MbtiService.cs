@@ -2,6 +2,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AbsoluteBot.Services.GoogleSearch;
+using AbsoluteBot.Services.UtilityServices;
 using HtmlAgilityPack;
 using Serilog;
 
@@ -12,7 +13,7 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// </summary>
 public partial class MbtiService(HttpClient httpClient, GoogleSearchService googleSearchService) : IAsyncInitializable
 {
-    private const string FilePath = "mbti_data.json";
+    private static string FilePath => DataPaths.Get("mbti_data.json");
 
     private const string UserAgentString =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36";
@@ -92,7 +93,7 @@ public partial class MbtiService(HttpClient httpClient, GoogleSearchService goog
     /// </summary>
     /// <param name="username">Имя пользователя.</param>
     /// <returns>Тип MBTI, если найден.</returns>
-    public string? GetMbtiForUser(string username)
+    public virtual string? GetMbtiForUser(string username)
     {
         try
         {
@@ -133,7 +134,7 @@ public partial class MbtiService(HttpClient httpClient, GoogleSearchService goog
     /// <param name="username">Имя пользователя.</param>
     /// <param name="mbti">Тип MBTI.</param>
     /// <returns><c>true</c>, если операция успешна, иначе <c>false</c>.</returns>
-    public async Task<bool> SetMbtiForUserAsync(string username, string mbti)
+    public virtual async Task<bool> SetMbtiForUserAsync(string username, string mbti)
     {
         try
         {
@@ -212,7 +213,7 @@ public partial class MbtiService(HttpClient httpClient, GoogleSearchService goog
             Log.Warning("links is empty");
             return null;
         }
-        File.WriteAllLines("mbtipath.txt",links);
+        File.WriteAllLines(DataPaths.Get("mbtipath.txt"), links);
         var matchingLink = links.FirstOrDefault(link => link.Contains(PersonalityDatabaseUrl));
         // Извлекается ссылка на сайт Personality Database
         if (matchingLink == null)

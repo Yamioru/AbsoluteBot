@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services;
@@ -11,7 +12,7 @@ namespace AbsoluteBot.Services;
 /// </summary>
 public class WisdomService : IAsyncInitializable
 {
-    private const string FilePath = "wisdoms.json";
+    private static string FilePath => DataPaths.Get("wisdoms.json");
     private static readonly SemaphoreSlim FileSemaphore = new(1, 1);
     private static readonly SemaphoreSlim ListSemaphore = new(1, 1);
     private static readonly Random Random = new();
@@ -35,7 +36,7 @@ public class WisdomService : IAsyncInitializable
     /// <returns>
     ///     <c>true</c>, если мудрость успешно добавлена; в противном случае <c>false</c>.
     /// </returns>
-    public async Task<bool> AddWisdomAsync(string wisdom)
+    public virtual async Task<bool> AddWisdomAsync(string wisdom)
     {
         await ListSemaphore.WaitAsync().ConfigureAwait(false);
         try
@@ -59,7 +60,7 @@ public class WisdomService : IAsyncInitializable
     ///     Асинхронно возвращает случайную мудрость из списка.
     /// </summary>
     /// <returns>Случайная мудрость или <c>null</c>, если список пуст.</returns>
-    public async Task<string?> GetRandomWisdomAsync()
+    public virtual async Task<string?> GetRandomWisdomAsync()
     {
         await ListSemaphore.WaitAsync().ConfigureAwait(false);
         try

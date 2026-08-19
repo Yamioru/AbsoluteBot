@@ -55,7 +55,7 @@ public class GameGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseSer
     /// </summary>
     /// <param name="gameName">Название игры.</param>
     /// <returns>Информация об игре, если найдена; иначе null.</returns>
-    public async Task<string?> FetchGameInfoAsync(string gameName)
+    public virtual async Task<string?> FetchGameInfoAsync(string gameName)
     {
         try
         {

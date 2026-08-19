@@ -33,7 +33,7 @@ public class TranslationService(HttpClient httpClient, ConfigService configServi
     /// <returns>
     ///     Возвращает переведенный текст, если перевод успешен, иначе <c>null</c>.
     /// </returns>
-    public async Task<string?> TranslateTextAsync(string text, string targetLanguage)
+    public virtual async Task<string?> TranslateTextAsync(string text, string targetLanguage)
     {
         try
         {

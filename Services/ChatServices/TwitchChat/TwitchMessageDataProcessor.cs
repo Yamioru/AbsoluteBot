@@ -36,6 +36,9 @@ public partial class TwitchMessageDataProcessor(ConfigService configService) : I
         [NotNullWhen(true)] out TwitchChatContext? context)
     {
         context = null;
+        messageText = null;
+        if (IsOwnBotMessage(chatMessage.Username) || IsOwnBotMessage(chatMessage.DisplayName)) return false;
+
         messageText = GetMessageText(chatMessage);
         if (string.IsNullOrEmpty(messageText)) return false;
 
@@ -113,6 +116,18 @@ public partial class TwitchMessageDataProcessor(ConfigService configService) : I
 
     [GeneratedRegex(@"\p{C}+")]
     private static partial Regex InvisibleUnicodeRegex();
+
+    /// <summary>
+    ///     Проверяет, принадлежит ли никнейм самому боту.
+    /// </summary>
+    internal bool IsOwnBotMessage(string? username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return false;
+        return (!string.IsNullOrEmpty(_twitchBotName) &&
+                username.Equals(_twitchBotName, StringComparison.InvariantCultureIgnoreCase)) ||
+               (!string.IsNullOrEmpty(_commonBotName) &&
+                username.Equals(_commonBotName, StringComparison.InvariantCultureIgnoreCase));
+    }
 
     /// <summary>
     ///     Заменяет конкретный никнейм бота на общий.

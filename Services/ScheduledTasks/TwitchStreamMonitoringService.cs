@@ -21,7 +21,8 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     TelegramChatService telegramChatService, DiscordChatService discordChatService, ChatGeminiService geminiService,
     TelegramChannelManager telegramChannelManager,
     GameGoogleSheetsService gameGoogleSheetsService, StreamGoogleSheetsService streamGoogleSheetsService,
-    GameProgressService gameProgressService, VkPlayChatService vkPlayChatService, ICommandRegistry commandRegistry) : IAsyncInitializable
+    GameProgressService gameProgressService, VkPlayChatService vkPlayChatService, ICommandRegistry commandRegistry,
+    StreamChatterStatsService streamChatterStatsService) : IAsyncInitializable
 {
     private const int VkPlayAllCommandsReminderIntervalHours = 3;
     private const int VkPlayRandomCommandReminderIntervalMinutes = 42;
@@ -108,6 +109,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
 
         var streamNumber = await configService.GetConfigValueAsync<int>("StreamNumber").ConfigureAwait(false);
         streamNumber++;
+        await streamChatterStatsService.BeginNewStreamAsync(streamNumber).ConfigureAwait(false);
         await configService.SetConfigValueAsync("StreamNumber", streamNumber).ConfigureAwait(false);
 
         // Запуск асинхронных задач для отправки информации о доступных командах

@@ -19,7 +19,7 @@ public class CommandExecutionService(ICommandParser commandParser, ICommandRegis
     /// <param name="text">Текст команды.</param>
     /// <param name="context">Контекст чата, в котором была отправлена команда.</param>
     /// <returns>Результат выполнения команды или <c>null</c>, если команда не распознана.</returns>
-    public async Task<string?> ExecuteCommandAsync(string text, ChatContext context)
+    public virtual async Task<string?> ExecuteCommandAsync(string text, ChatContext context)
     {
         // Получение роли пользователя
         var userRole = await roleService.GetUserRoleAsync(context.Username).ConfigureAwait(false);

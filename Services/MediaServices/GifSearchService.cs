@@ -32,7 +32,7 @@ public partial class GifSearchService
     /// </summary>
     /// <param name="text">Текст запроса для поиска GIF.</param>
     /// <returns>URL найденной GIF или URL изображения котика, если ничего не найдено.</returns>
-    public async Task<string> SearchGifAsync(string text)
+    public virtual async Task<string> SearchGifAsync(string text)
     {
         try
         {

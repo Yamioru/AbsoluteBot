@@ -20,7 +20,7 @@ public class CommandsListService(ICommandRegistry commandRegistry, IImageGenerat
     /// </summary>
     /// <param name="command">Команда вывода всех команд, которая содержит информацию о контексте.</param>
     /// <returns>URL изображения со списком команд.</returns>
-    public async Task<string?> GenerateCommandsListAsImageAsync(ParsedCommand command)
+    public virtual async Task<string?> GenerateCommandsListAsImageAsync(ParsedCommand command)
     {
         try
         {
@@ -43,7 +43,7 @@ public class CommandsListService(ICommandRegistry commandRegistry, IImageGenerat
     /// </summary>
     /// <param name="command">Команда вывода всех команд, которая содержит информацию о контексте.</param>
     /// <returns>Список доступных команд в виде строки.</returns>
-    public string? GenerateCommandsListAsText(ParsedCommand command)
+    public virtual string? GenerateCommandsListAsText(ParsedCommand command)
     {
         try
         {

@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using AbsoluteBot.Models;
 using AbsoluteBot.Services.NeuralNetworkServices;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services.UserManagementServices;
@@ -11,7 +12,7 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// </summary>
 public class BirthdayService(AskGeminiService askGeminiService) : IAsyncInitializable
 {
-    private const string FilePath = "user_birthdays.json";
+    private static string FilePath => DataPaths.Get("user_birthdays.json");
     private const int MaxMessageLength = 250;
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
@@ -34,7 +35,7 @@ public class BirthdayService(AskGeminiService askGeminiService) : IAsyncInitiali
     /// <param name="platform">Название платформы.</param>
     /// <param name="birthDateTime">Дата рождения - месяц и день</param>
     /// <returns><c>true</c>, если операция выполнена успешно; иначе <c>false</c>.</returns>
-    public async Task<bool> AddOrUpdateUserBirthday(string username, string platform, DateTime birthDateTime)
+    public virtual async Task<bool> AddOrUpdateUserBirthday(string username, string platform, DateTime birthDateTime)
     {
         try
         {
@@ -92,7 +93,7 @@ public class BirthdayService(AskGeminiService askGeminiService) : IAsyncInitiali
     /// <param name="username">Имя пользователя.</param>
     /// <param name="platform">Платформа для отключения уведомлений.</param>
     /// <returns><c>true</c>, если уведомления успешно отключены; иначе <c>false</c>.</returns>
-    public async Task<bool> DisableBirthdayNotificationForPlatformAsync(string username, string platform)
+    public virtual async Task<bool> DisableBirthdayNotificationForPlatformAsync(string username, string platform)
     {
         try
         {
@@ -132,7 +133,7 @@ public class BirthdayService(AskGeminiService askGeminiService) : IAsyncInitiali
     ///     Получает список всех дней рождения пользователей.
     /// </summary>
     /// <returns>Список всех пользователей с информацией о их днях рождения.</returns>
-    public List<UserBirthdayInfo> GetAllBirthdays()
+    public virtual List<UserBirthdayInfo> GetAllBirthdays()
     {
         return _userBirthdayInfos;
     }
@@ -145,7 +146,7 @@ public class BirthdayService(AskGeminiService askGeminiService) : IAsyncInitiali
     ///     Сообщение с количеством дней, часов и минут до следующего дня рождения, или поздравительное сообщение, если
     ///     день рождения сегодня.
     /// </returns>
-    public string GetTimeUntilNextBirthdayForPlatform(string platform)
+    public virtual string GetTimeUntilNextBirthdayForPlatform(string platform)
     {
         try
         {
@@ -175,7 +176,7 @@ public class BirthdayService(AskGeminiService askGeminiService) : IAsyncInitiali
     ///     Сообщение с количеством дней, часов и минут до дня рождения пользователя, или поздравительное сообщение, если
     ///     день рождения сегодня.
     /// </returns>
-    public string GetTimeUntilUserBirthdayForPlatform(string username, string platform)
+    public virtual string GetTimeUntilUserBirthdayForPlatform(string username, string platform)
     {
         try
         {

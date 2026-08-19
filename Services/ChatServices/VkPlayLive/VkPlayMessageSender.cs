@@ -10,7 +10,7 @@ namespace AbsoluteBot.Services.ChatServices.VkPlayLive;
 /// <summary>
 /// Отвечает за отправку сообщений в VkPlayLive через HTTP-запросы.
 /// </summary>
-public partial class VkPlayMessageSender(ConfigService configService) : IAsyncInitializable
+public partial class VkPlayMessageSender(ConfigService configService, HttpClient httpClient) : IAsyncInitializable
 {
     private const string VkPlayApiUrlFormat = "https://api.live.vkplay.ru/v1/blog/{0}/public_video_stream/chat";
     private const string TextBlockType = "text";
@@ -43,14 +43,19 @@ public partial class VkPlayMessageSender(ConfigService configService) : IAsyncIn
         // Создание контента запроса
         var data = "data=" + SerializeMessage(message);
         if (messageId > 0) data += $"&reply_to_id={messageId}";
-        using var client = new HttpClient();
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_authSendToken}");
-        var content = new StringContent(data, Encoding.UTF8, ContentType);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_authSendToken}");
+        request.Content = new StringContent(data, Encoding.UTF8, ContentType);
 
         // Отправка запроса
-        var response = await client.PostAsync(url, content).ConfigureAwait(false);
+        var response = await httpClient.SendAsync(request).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
+
+    /// <summary>
+    ///     Сериализует сообщение для VkPlay (доступно тестам через InternalsVisibleTo).
+    /// </summary>
+    internal static string SerializeMessageForTests(string message) => SerializeMessage(message);
 
     public void SetAuthSendToken(string token)
     {

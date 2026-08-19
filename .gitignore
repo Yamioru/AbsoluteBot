@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# VK Live request cookies (лежат в data-root, не в исходниках)
+vkplay_request_cookies.txt

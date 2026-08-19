@@ -20,7 +20,7 @@ public partial class ImageSearchService(HttpClient httpClient)
     private readonly HashSet<string> _usedImgUrls = new();
     private readonly List<string> _excludeImageWords = new() { "sun9", "shutterstock", "deposit", "alamy" };
 
-    public async Task<string> SearchImageAsync(string text)
+    public virtual async Task<string> SearchImageAsync(string text)
     {
         try
         {

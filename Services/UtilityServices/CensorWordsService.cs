@@ -10,7 +10,7 @@ namespace AbsoluteBot.Services.UtilityServices;
 /// </summary>
 public class CensorWordsService : IAsyncInitializable
 {
-    private const string FilePath = "censor_words.json";
+    private static string FilePath => DataPaths.Get("censor_words.json");
     private static readonly SemaphoreSlim FileSemaphore = new(1, 1);
     private static readonly SemaphoreSlim ListSemaphore = new(1, 1);
 
@@ -31,7 +31,7 @@ public class CensorWordsService : IAsyncInitializable
     /// </summary>
     /// <param name="word">Цензурное слово, которое нужно добавить.</param>
     /// <returns>True, если слово успешно добавлено; иначе False.</returns>
-    public async Task<bool> AddCensorWordAsync(string word)
+    public virtual async Task<bool> AddCensorWordAsync(string word)
     {
         await ListSemaphore.WaitAsync().ConfigureAwait(false);
         try
@@ -66,7 +66,7 @@ public class CensorWordsService : IAsyncInitializable
     /// </summary>
     /// <param name="word">Цензурное слово, которое нужно удалить.</param>
     /// <returns>True, если слово успешно удалено; иначе False.</returns>
-    public async Task<bool> RemoveCensorWordAsync(string word)
+    public virtual async Task<bool> RemoveCensorWordAsync(string word)
     {
         await ListSemaphore.WaitAsync().ConfigureAwait(false);
         try

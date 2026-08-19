@@ -24,7 +24,7 @@ public partial class MailRuAnswerService(HttpClient httpClient)
     /// </summary>
     /// <param name="query">Вопрос, который нужно задать.</param>
     /// <returns>Ответ на вопрос, либо сообщение об отсутствии ответа.</returns>
-    public async Task<string?> AskAsync(string query)
+    public virtual async Task<string?> AskAsync(string query)
     {
         try
         {

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AbsoluteBot.Services.UtilityServices;
 using Google.Apis.Sheets.v4.Data;
 using Serilog;
 
@@ -12,7 +13,7 @@ namespace AbsoluteBot.Services.GoogleSheetsServices;
 /// </summary>
 public partial class RateGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseService) : IAsyncInitializable
 {
-    private const string RateFilePath = "gamesRates.json";
+    private static string RateFilePath => DataPaths.Get("gamesRates.json");
     private const string GameSheetName = "Игры"; // Название листа со списком игр
     private const string GameNameColumnLetter = "B"; // Столбец названий игр
     private const string GameChatRateColumnLetter = "G"; // Столбец оценки чата для игр
@@ -46,7 +47,7 @@ public partial class RateGoogleSheetsService(GoogleSheetsBaseService googleSheet
     /// <param name="username">Имя пользователя, который ставит оценку.</param>
     /// <param name="gameName">Название игры, для которой меняется оценка.</param>
     /// <returns>Сообщение о результате выполнения операции.</returns>
-    public async Task<string> UpdateGameRatingAsync(string value, string username, string gameName)
+    public virtual async Task<string> UpdateGameRatingAsync(string value, string username, string gameName)
     {
         try
         {

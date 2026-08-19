@@ -10,7 +10,7 @@ namespace AbsoluteBot.Services.UtilityServices;
 /// </summary>
 public partial class AutoTranslateService(TranslationService translationService) : IAsyncInitializable
 {
-    private const string FilePath = "auto_translate_users.json";
+    private static string FilePath => DataPaths.Get("auto_translate_users.json");
     private const string TranslationLanguage = "RU";
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
@@ -49,7 +49,7 @@ public partial class AutoTranslateService(TranslationService translationService)
     /// </summary>
     /// <param name="username">Имя пользователя, для которого переключается статус перевода.</param>
     /// <returns>Возвращает <c>true</c>, если операция выполнена успешно, иначе <c>false</c>.</returns>
-    public async Task<bool> ToggleUserAutoTranslateAsync(string username)
+    public virtual async Task<bool> ToggleUserAutoTranslateAsync(string username)
     {
         try
         {

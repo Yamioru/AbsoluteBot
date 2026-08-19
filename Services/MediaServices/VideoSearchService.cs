@@ -20,7 +20,7 @@ public partial class VideoSearchService(HttpClient httpClient)
     /// </summary>
     /// <param name="text">Текст для поиска видео.</param>
     /// <returns>URL найденного видео или URL по умолчанию, если поиск не удался.</returns>
-    public async Task<string> SearchVideoAsync(string text)
+    public virtual async Task<string> SearchVideoAsync(string text)
     {
         try
         {

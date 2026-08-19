@@ -1,4 +1,5 @@
 ﻿using AbsoluteBot.Models;
+using AbsoluteBot.Services.UtilityServices;
 using Newtonsoft.Json;
 using Serilog;
 
@@ -10,7 +11,7 @@ namespace AbsoluteBot.Services;
 /// </summary>
 public class ClipsService : IAsyncInitializable
 {
-    private const string FilePath = "clips.json";
+    private static string FilePath => DataPaths.Get("clips.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
     private List<Clip> _clips = new();
 

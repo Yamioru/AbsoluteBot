@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
+using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services.CommandManagementServices;
@@ -9,7 +10,7 @@ namespace AbsoluteBot.Services.CommandManagementServices;
 /// </summary>
 public class CooldownService : IAsyncInitializable
 {
-    private const string CooldownFilePath = "cooldowns.json";
+    private static string CooldownFilePath => DataPaths.Get("cooldowns.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -43,7 +44,7 @@ public class CooldownService : IAsyncInitializable
     /// <param name="serviceName">Имя сервиса (платформы).</param>
     /// <param name="seconds">Длительность перезарядки в секундах.</param>
     /// <returns><c>true</c>, если перезарядка была успешно установлена; в противном случае — <c>false</c>.</returns>
-    public async Task<bool> SetCooldownAsync(string serviceName, string seconds)
+    public virtual async Task<bool> SetCooldownAsync(string serviceName, string seconds)
     {
         try
         {
