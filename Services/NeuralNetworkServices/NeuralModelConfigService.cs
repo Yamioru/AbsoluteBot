@@ -254,8 +254,8 @@ public class NeuralModelsDocument
     public const string DefaultGeminiAsk = "gemini-3.1-flash-lite";
     public const string DefaultGeminiGoogleSearch = "gemini-3.5-flash";
     public const string DefaultGeminiImage = "gemini-3-pro-image-preview";
-    public const string DefaultGroqChat = "openai/gpt-oss-120b";
-    public const string DefaultGroqAsk = "openai/gpt-oss-120b";
+    public const string DefaultGroqChat = "openai/gpt-oss-20b";
+    public const string DefaultGroqAsk = "openai/gpt-oss-20b";
     public const string DefaultGroqGoogleSearch = "groq/compound";
 
     [JsonProperty("provider")]

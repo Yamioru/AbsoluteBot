@@ -259,7 +259,7 @@ public partial class NeuralChatService(
         var model = modelConfig.GetModel(NeuralEntities.Chat);
 
         if (string.Equals(modelConfig.GetProvider(), NeuralProviders.Groq, StringComparison.OrdinalIgnoreCase))
-            return await groqService.CompleteAsync(chatHistory.ToGroqMessages(replacements), model, temperature, MaxOutputTokens)
+            return await groqService.CompleteAsync(chatHistory.ToGroqMessages(replacements), model, temperature)
                 .ConfigureAwait(false);
 
         return await geminiChat.CompleteAsync(chatHistory, replacements, temperature, model, MaxOutputTokens)

@@ -199,7 +199,15 @@ public class ChatHistory
             result.Add(new GroqChatMessage(role, content));
         }
 
-        return result;
+        const int keepInitial = 2;
+        const int keepRecent = 30;
+        if (result.Count <= keepInitial + keepRecent)
+            return result;
+
+        var truncated = new List<GroqChatMessage>(keepInitial + keepRecent);
+        truncated.AddRange(result.Take(keepInitial));
+        truncated.AddRange(result.Skip(result.Count - keepRecent));
+        return truncated;
     }
 
     /// <summary>

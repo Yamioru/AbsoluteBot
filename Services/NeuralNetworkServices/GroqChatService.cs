@@ -42,16 +42,20 @@ public class GroqChatService(ConfigService configService, HttpClient httpClient)
             };
             if (maxTokens is > 0)
                 payload["max_tokens"] = maxTokens.Value;
+            if (model.Contains("gpt-oss", StringComparison.OrdinalIgnoreCase))
+                payload["reasoning_effort"] = "low";
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, ChatCompletionsUrl);
-            request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + apiKey);
-            request.Content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
-
-            var response = await httpClient.SendAsync(request).ConfigureAwait(false);
-            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            var (success, body) = await SendAsync(apiKey, payload).ConfigureAwait(false);
+            if (!success && maxTokens is > 0 && IsMaxTokensRejected(body))
             {
-                Log.Warning("Groq API вернул {Status}: {Body}", (int) response.StatusCode, Truncate(body));
+                Log.Warning("Groq отклонил max_tokens={MaxTokens} для модели {Model}, повтор без лимита.", maxTokens, model);
+                payload.Remove("max_tokens");
+                (success, body) = await SendAsync(apiKey, payload).ConfigureAwait(false);
+            }
+
+            if (!success)
+            {
+                Log.Warning("Groq API вернул ошибку: {Body}", Truncate(body));
                 return null;
             }
 
@@ -63,6 +67,20 @@ public class GroqChatService(ConfigService configService, HttpClient httpClient)
             return null;
         }
     }
+
+    private async Task<(bool Success, string Body)> SendAsync(string apiKey, JObject payload)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, ChatCompletionsUrl);
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + apiKey);
+        request.Content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
+
+        var response = await httpClient.SendAsync(request).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        return (response.IsSuccessStatusCode, body);
+    }
+
+    private static bool IsMaxTokensRejected(string body) =>
+        body.Contains("max_tokens", StringComparison.OrdinalIgnoreCase);
 
     private static string? ParseContent(string body)
     {
