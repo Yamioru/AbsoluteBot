@@ -7,7 +7,7 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 /// <summary>
 ///     Команда для получения случайного факта из википедии и не только.
 /// </summary>
-public class FactCommand(FactService factService, AskGeminiService geminiService) : BaseCommand
+public class FactCommand(FactService factService, INeuralAskService neuralAsk) : BaseCommand
 {
     public override int Priority => 407;
     public override string Description => "выдаёт какой-то интересный или не очень факт из википедии и не только.";
@@ -18,7 +18,7 @@ public class FactCommand(FactService factService, AskGeminiService geminiService
         var fact = await factService.GetFactAsync().ConfigureAwait(false);
         if (string.IsNullOrEmpty(fact))
         {
-            fact = await geminiService.AskGeminiResponseAsync("Расскажи интересный случайный факт на случайную тему.", 200,
+            fact = await neuralAsk.AskAsync("Расскажи интересный случайный факт на случайную тему.", 200,
                 instruction: "Он должен быть небольшим, не больше пары предложений", temperature: 2.0);
         }
         return fact ?? "Не удалось раздобыть факт.";

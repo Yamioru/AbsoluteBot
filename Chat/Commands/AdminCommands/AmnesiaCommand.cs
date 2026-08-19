@@ -7,7 +7,7 @@ namespace AbsoluteBot.Chat.Commands.AdminCommands;
 /// <summary>
 ///     Команда очистки истории сообщений у бота в диалоговом режиме чата с использованием Gemini.
 /// </summary>
-public class AmnesiaCommand(ChatGeminiService geminiService) : BaseCommand
+public class AmnesiaCommand(INeuralChatService neuralChat) : BaseCommand
 {
     public override int Priority => 706;
     public override string Description => "удаляет воспоминания чат бота.";
@@ -21,7 +21,7 @@ public class AmnesiaCommand(ChatGeminiService geminiService) : BaseCommand
 
     protected override async Task<string> ExecuteLogicAsync(ParsedCommand command)
     {
-        return await geminiService.ClearPlatformChatHistoryAsync(command.Context.Platform).ConfigureAwait(false)
+        return await neuralChat.ClearPlatformChatHistoryAsync(command.Context.Platform).ConfigureAwait(false)
             ? "Команда успешно применена."
             : "Не удалось применить команду.";
     }

@@ -7,7 +7,7 @@ using Serilog;
 
 namespace AbsoluteBot.Chat.Commands.UserCommands;
 
-public class WhoSbtiCommand(SbtiService sbtiService, ConfigService configService, AskGeminiService askGeminiService,
+public class WhoSbtiCommand(SbtiService sbtiService, ConfigService configService, INeuralAskService neuralAsk,
     JsonSbtiCharacterCatalogService sbtiCatalogService) : BaseCommand, IParameterized
 {
     public override int Priority => 302;
@@ -71,7 +71,7 @@ public class WhoSbtiCommand(SbtiService sbtiService, ConfigService configService
 
             Log.Information("Gemini SBTI запрос: игра={Game}, SBTI={Sbti}, Исключены={Exclusions}", targetGame, userSbti, excludeJoined);
 
-            var raw = await askGeminiService.AskGeminiResponseAsync(message, 64, instruction: instruction).ConfigureAwait(false);
+            var raw = await neuralAsk.AskAsync(message, 64, instruction: instruction).ConfigureAwait(false);
 
             var candidate = TextProcessingUtils.SanitizeName(raw);
             if (!string.IsNullOrWhiteSpace(candidate))

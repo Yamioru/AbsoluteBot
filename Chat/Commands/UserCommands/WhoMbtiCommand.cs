@@ -12,7 +12,7 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 /// Команда выдачи персонажа из текущий или выбранной игры для пользователя вызвавшего команду или выбранного им
 /// человека.
 /// </summary>
-public class WhoMbtiCommand(MbtiService mbtiService, ConfigService configService, AskGeminiService askGeminiService,
+public class WhoMbtiCommand(MbtiService mbtiService, ConfigService configService, INeuralAskService neuralAsk,
     JsonMbtiCharacterCatalogService mbtiCatalogService) : BaseCommand, IParameterized
 {
     public override int Priority => 302;
@@ -96,8 +96,8 @@ public class WhoMbtiCommand(MbtiService mbtiService, ConfigService configService
                     targetGame,
                     userMbti);
 
-                var raw = await askGeminiService
-                    .AskGeminiResponseAsync(message, 64, instruction: instruction)
+                var raw = await neuralAsk
+                    .AskAsync(message, 64, instruction: instruction)
                     .ConfigureAwait(false);
 
                 // Логирование результата

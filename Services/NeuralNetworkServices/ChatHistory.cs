@@ -179,6 +179,30 @@ public class ChatHistory
     }
 
     /// <summary>
+    ///     Конвертирует историю Gemini (user/model + parts) в сообщения Groq/OpenAI (user/assistant).
+    ///     Изображения пропускаются.
+    /// </summary>
+    public IReadOnlyList<GroqChatMessage> ToGroqMessages(Dictionary<string, string> replacements)
+    {
+        var history = GetHistory(replacements);
+        var result = new List<GroqChatMessage>(history.Count);
+        foreach (var message in history)
+        {
+            var geminiRole = message["role"]?.ToString();
+            var role = string.Equals(geminiRole, "model", StringComparison.OrdinalIgnoreCase) ? "assistant" : "user";
+            var texts = (message["parts"] as JArray)?
+                .Select(part => part?["text"]?.ToString())
+                .Where(text => !string.IsNullOrWhiteSpace(text));
+            var content = texts == null ? null : string.Join("\n", texts);
+            if (string.IsNullOrWhiteSpace(content))
+                continue;
+            result.Add(new GroqChatMessage(role, content));
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Проверяет, есть ли сообщение в недавней истории.
     /// </summary>
     /// <param name="role">Роль отправителя (обычно "user" или "model").</param>

@@ -8,7 +8,10 @@ namespace AbsoluteBot.Services.NeuralNetworkServices;
 /// Сервис для генерации изображений с помощью Gemini
 /// </summary>
 /// <param name="settingsProvider"></param>
-public class GeminiImageGenerationService(HttpClient httpClient, GeminiSettingsProvider settingsProvider)
+public class GeminiImageGenerationService(
+    GeminiSettingsProvider settingsProvider,
+    NeuralModelConfigService modelConfig,
+    HttpClient httpClient)
 {
     /// <summary>
     /// Сгенерировать/отредактировать изображение.
@@ -29,7 +32,8 @@ public class GeminiImageGenerationService(HttpClient httpClient, GeminiSettingsP
 
             foreach (var apiKey in settingsProvider.ApiKeys)
             {
-                var url = $"{GeminiSettingsProvider.BaseApiUrl}/models/gemini-3-pro-image-preview:generateContent";
+                var model = modelConfig.GetModel(NeuralEntities.Image);
+                var url = $"{GeminiSettingsProvider.BaseApiUrl}/{model}:generateContent";
 
                 var jsonData = GenerateJsonPayload(prompt, base64Image);
 
@@ -40,8 +44,9 @@ public class GeminiImageGenerationService(HttpClient httpClient, GeminiSettingsP
                 using var resp = await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
                 if (!resp.IsSuccessStatusCode)
                 {
-                    // попробуем следующий ключ, если есть
-                    Log.Warning("Gemini API returned {Status} for key tail=...{Tail}", (int) resp.StatusCode, apiKey[^4..]);
+                    var errorBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    Log.Warning("Gemini API returned {Status} for key tail=...{Tail}: {Body}",
+                        (int) resp.StatusCode, apiKey[^4..], errorBody.Length <= 500 ? errorBody : errorBody[..500] + "...");
                     continue;
                 }
 

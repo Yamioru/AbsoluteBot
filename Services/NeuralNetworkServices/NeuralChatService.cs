@@ -1,31 +1,26 @@
 ﻿using System.Text.RegularExpressions;
 using AbsoluteBot.Helpers;
 using AbsoluteBot.Models;
+using AbsoluteBot.Services;
 using AbsoluteBot.Services.UtilityServices;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using Serilog;
 
 namespace AbsoluteBot.Services.NeuralNetworkServices;
 #pragma warning disable IDE0028
 /// <summary>
-///     Сервис для работы с моделью Gemini, поддерживающий взаимодействие с несколькими платформами,
-///     управление историей чатов и генерацию ответов на основе сообщений пользователя.
+///     Надстройка диалогового чата: история, платформы, постобработка. Генерацию отдаёт Gemini или Groq.
 /// </summary>
-public partial class ChatGeminiService(ConfigService configService, GeminiSettingsProvider settingsProvider) : IAsyncInitializable
+public partial class NeuralChatService(
+    ConfigService configService,
+    NeuralModelConfigService modelConfig,
+    GroqChatService groqService,
+    GeminiChatClient geminiChat) : INeuralChatService, IAsyncInitializable
 {
     private const string ModelGeminiName = "model";
     private const string UserGeminiName = "user";
     private const int MaxOutputTokens = 2000;
-    private const double TopP = 0.95;
     private const double InitialTemperature = 0.8;
     private const int MaxGenerationAttempts = 3;
-    private const int DelayBetweenAttempts = 500;
-    private const string CategorySexuallyExplicit = "HARM_CATEGORY_SEXUALLY_EXPLICIT";
-    private const string CategoryHateSpeech = "HARM_CATEGORY_HATE_SPEECH";
-    private const string CategoryHarassment = "HARM_CATEGORY_HARASSMENT";
-    private const string CategoryDangerousContent = "HARM_CATEGORY_DANGEROUS_CONTENT";
-    private const string ThresholdBlockNone = "BLOCK_NONE";
     private readonly Dictionary<string, ChatHistory> _platformChatHistories = new();
     private readonly SemaphoreSlim _chatAsyncSemaphore = new(1, 1);
     private string? _botName;
@@ -209,7 +204,10 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
         await _chatAsyncSemaphore.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (settingsProvider.ApiKeys == null || _botName == null)
+            if (_botName == null)
+                return default;
+            if (!string.Equals(modelConfig.GetProvider(), NeuralProviders.Groq, StringComparison.OrdinalIgnoreCase)
+                && !geminiChat.HasApiKeys)
                 return default;
             return await action().ConfigureAwait(false);
         }
@@ -226,67 +224,6 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex ExtraSpacesRegex();
-
-    /// <summary>
-    ///     Создание JSON-данных для модели с заданной температурой и историей чата.
-    /// </summary>
-    /// <param name="temperature">Параметр температуры для генерации (влияет на креативность ответа).</param>
-    /// <param name="chatHistory">История чата, используемая для генерации ответа.</param>
-    /// <param name="replacements">Заменяемые в промпте данные</param>
-    /// <returns>Строка с JSON-данными для отправки модели.</returns>
-    private static string GenerateJsonDataString(double temperature, ChatHistory chatHistory, Dictionary<string, string> replacements)
-    {
-        var jsonData = new JObject
-        {
-            ["contents"] = chatHistory.GetHistory(replacements),
-            ["generationConfig"] = new JObject
-            {
-                ["temperature"] = temperature,
-                ["maxOutputTokens"] = MaxOutputTokens,
-                //["topP"] = TopP,
-                //["presencePenalty"] = 1.9,
-                //["stopSequences"] = new JArray
-                //{
-                //    "Лучше",
-                //    "Давай лучше",
-                //    "Давай не будем",
-                //    "Может, лучше",
-                //    "Сменим тему"
-                //}
-            },
-            ["safetySettings"] = new JArray
-            {
-                new JObject
-                {
-                    ["category"] = CategorySexuallyExplicit,
-                    ["threshold"] = ThresholdBlockNone
-                },
-                new JObject
-                {
-                    ["category"] = CategoryHateSpeech,
-                    ["threshold"] = ThresholdBlockNone
-                },
-                new JObject
-                {
-                    ["category"] = CategoryHarassment,
-                    ["threshold"] = ThresholdBlockNone
-                },
-                new JObject
-                {
-                    ["category"] = CategoryDangerousContent,
-                    ["threshold"] = ThresholdBlockNone
-                }
-            }
-            //,["tools"] = new JArray
-            //{
-            //    new JObject
-            //    {
-            //        ["google_search"] = new JObject()
-            //    }
-            //}
-        };
-        return jsonData.ToString(Formatting.None);
-    }
 
     /// <summary>
     /// Создание замен для слов в промпте
@@ -317,32 +254,16 @@ public partial class ChatGeminiService(ConfigService configService, GeminiSettin
     /// <returns>Сгенерированный ответ или null, если возникла ошибка.</returns>
     private async Task<string?> GenerateModelResponseAsync(double temperature, string platform)
     {
-        if (settingsProvider.ApiKeys == null) return null;
         var chatHistory = await GetChatHistoryForPlatformAsync(platform).ConfigureAwait(false);
+        var replacements = await BuildReplacements(platform).ConfigureAwait(false);
+        var model = modelConfig.GetModel(NeuralEntities.Chat);
 
-        foreach (var model in settingsProvider.Models)
-        foreach (var apiKey in settingsProvider.ApiKeys)
-        {
-            var url = $"{GeminiSettingsProvider.BaseApiUrl}/{model}:generateContent?key={apiKey}";
-            try
-            {
-                var replacements = await BuildReplacements(platform);
-                var jsonData = GenerateJsonDataString(temperature, chatHistory, replacements);
-                var text = await settingsProvider.FetchModelResponseAsync(jsonData, url).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(text))
-                    return text;
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, $"Попытка использования API-ключа '{apiKey}' и модели {model} завершилась неудачей.");
-            }
-            finally
-            {
-                await Task.Delay(DelayBetweenAttempts).ConfigureAwait(false);
-            }
-        }
+        if (string.Equals(modelConfig.GetProvider(), NeuralProviders.Groq, StringComparison.OrdinalIgnoreCase))
+            return await groqService.CompleteAsync(chatHistory.ToGroqMessages(replacements), model, temperature, MaxOutputTokens)
+                .ConfigureAwait(false);
 
-        return null;
+        return await geminiChat.CompleteAsync(chatHistory, replacements, temperature, model, MaxOutputTokens)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

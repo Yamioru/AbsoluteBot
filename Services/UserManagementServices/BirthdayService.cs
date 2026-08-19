@@ -10,7 +10,7 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// <summary>
 ///     Сервис для управления днями рождения пользователей и отправки поздравлений.
 /// </summary>
-public class BirthdayService(AskGeminiService askGeminiService) : IAsyncInitializable
+public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
 {
     private static string FilePath => DataPaths.Get("user_birthdays.json");
     private const int MaxMessageLength = 250;
@@ -278,7 +278,7 @@ public class BirthdayService(AskGeminiService askGeminiService) : IAsyncInitiali
             ? $"Ты уже не первый раз за сегодня поздравляешь {userInfo.UserName} с днём рождения."
             : $"Составь теплое поздравление с днем рождения для {userInfo.UserName}, друга в процессе становления! 🥳 Вырази свои теплые пожелания, поделись позитивными надеждами на будущее, добавь немного легкого юмора и создай простое, насыщенное ощущением праздника поздравление. Пусть оно будет дружелюбным и непринужденным, искренним и простым, чтобы подчеркнуть важность этого дня для {userInfo.UserName}, без использования шаблонных фраз или вставок.";
 
-        return await askGeminiService.AskGeminiResponseAsync(birthdayMessage, MaxMessageLength).ConfigureAwait(false);
+        return await neuralAsk.AskAsync(birthdayMessage, MaxMessageLength).ConfigureAwait(false);
     }
 
     /// <summary>

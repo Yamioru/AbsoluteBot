@@ -10,7 +10,7 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 /// <summary>
 /// Команда для создания клипа на Twitch. Клип создаётся без названия длинной в 30 секунд.
 /// </summary>
-public class ClipCommand(TwitchChatService twitchChatService, AskGeminiService geminiService, ClipsService clipsService) : BaseCommand, IParameterized
+public class ClipCommand(TwitchChatService twitchChatService, INeuralAskService neuralAsk, ClipsService clipsService) : BaseCommand, IParameterized
 {
     public override int Priority => 10;
     public override string Description => "делает клип со стрима на twitch или ищет уже сделанный по описанию.";
@@ -44,7 +44,7 @@ public class ClipCommand(TwitchChatService twitchChatService, AskGeminiService g
             command.Parameters);
 
         // Отправка запроса в Gemini
-        var gptResponse = await geminiService.AskGeminiResponseAsync(gptRequest, command.Context.MaxMessageLength).ConfigureAwait(false);
+        var gptResponse = await neuralAsk.AskAsync(gptRequest, command.Context.MaxMessageLength).ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(gptResponse))
         {

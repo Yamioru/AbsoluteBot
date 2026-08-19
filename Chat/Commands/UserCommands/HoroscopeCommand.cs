@@ -6,7 +6,7 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 /// <summary>
 ///     Команда получения гороскопа на определенное время.
 /// </summary>
-public class HoroscopeCommand(AskGeminiService askGeminiService) : BaseCommand
+public class HoroscopeCommand(INeuralAskService neuralAsk) : BaseCommand
 {
     protected readonly Random Random = new();
     public override int Priority => 400;
@@ -20,7 +20,7 @@ public class HoroscopeCommand(AskGeminiService askGeminiService) : BaseCommand
         var what = new List<string> {"положительного", "отрицательного", "нейтрального"};
         var text = $"Составь мне гороскоп {what[Random.Next(what.Count)]} характера, начиная с фразы: Согласно гороскопу " +
                    when[Random.Next(when.Count)] + " " + whom[Random.Next(whom.Count)];
-        return await askGeminiService.AskGeminiResponseAsync(text, command.Context.MaxMessageLength).ConfigureAwait(false) ??
+        return await neuralAsk.AskAsync(text, command.Context.MaxMessageLength).ConfigureAwait(false) ??
                "Текущее положение планет мешает составлению гороскопа, попробуйте позже.";
     }
 }

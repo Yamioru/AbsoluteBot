@@ -11,7 +11,7 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 ///     Получение нагугленной информации в интернете, сгруппированной с помощью нейросети.
 /// </summary>
 public class GoogleSearchWithNeuralNetworkCommand
-    (IGoogleSearchService googleSearchService, AskGeminiService geminiService, WebContentService webContentService) : BaseCommand, IParameterized
+    (IGoogleSearchService googleSearchService, INeuralAskService neuralAsk, WebContentService webContentService) : BaseCommand, IParameterized
 {
     public override int Priority => 9;
     public override string Description => "выдаёт краткую сводку нагугленную информацию по тексту запроса.";
@@ -56,7 +56,7 @@ public class GoogleSearchWithNeuralNetworkCommand
         var resultText =
             $"Нужно найти ответ на запрос: \"{command.Parameters}\", во что по этому поводу нашлось в интернете:\n".ToUpper() +
             string.Join('\n', resultsMainText);
-        var geminiResponse = await geminiService.AskGeminiResponseAsync(resultText, command.Context.MaxMessageLength).ConfigureAwait(false);
+        var geminiResponse = await neuralAsk.AskAsync(resultText, command.Context.MaxMessageLength).ConfigureAwait(false);
         
         if (geminiResponse != null)
         {

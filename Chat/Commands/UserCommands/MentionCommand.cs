@@ -12,7 +12,7 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 /// <summary>
 ///     Команда для ответа на сообщение упоминающее бота в чате.
 /// </summary>
-public class MentionCommand(ChatGeminiService geminiService, CommandExecutionService commandExecutionService, ConfigService configService) :
+public class MentionCommand(INeuralChatService neuralChat, CommandExecutionService commandExecutionService, ConfigService configService) :
     IChatCommand,
     IParameterized, IAsyncInitializable
 {
@@ -48,7 +48,7 @@ public class MentionCommand(ChatGeminiService geminiService, CommandExecutionSer
         // Если упоминание стриггерено случайно, то сообщение от бота получается на основе контекста беседы.
         if (context.LastMessages?.Count > 9)
         {
-            response = await geminiService.ChatAsync(context.LastMessages, context.Platform).ConfigureAwait(false);
+            response = await neuralChat.ChatAsync(context.LastMessages, context.Platform).ConfigureAwait(false);
         }
         else
         {
@@ -56,11 +56,11 @@ public class MentionCommand(ChatGeminiService geminiService, CommandExecutionSer
             if (context.ChatService is IChatImageService chatImageService)
             {
                 var image = await chatImageService.GetImageAsBase64Async(command.Parameters, context);
-                response = await geminiService.ChatAsync(input, context.Reply, context.Platform, image).ConfigureAwait(false);
+                response = await neuralChat.ChatAsync(input, context.Reply, context.Platform, image).ConfigureAwait(false);
             }
             else
             {
-                response = await geminiService.ChatAsync(input, context.Reply, context.Platform).ConfigureAwait(false);
+                response = await neuralChat.ChatAsync(input, context.Reply, context.Platform).ConfigureAwait(false);
             }
         }
 
@@ -72,7 +72,7 @@ public class MentionCommand(ChatGeminiService geminiService, CommandExecutionSer
         context.Username = _botName;
         response = await commandExecutionService.ExecuteCommandAsync(command.Response, context).ConfigureAwait(false);
         if (!string.IsNullOrEmpty(response))
-            await geminiService.AddUserMessageToChatHistoryOnPlatform(response, _botName, command.Context.Platform).ConfigureAwait(false);
+            await neuralChat.AddUserMessageToChatHistoryOnPlatform(response, _botName, command.Context.Platform).ConfigureAwait(false);
         response ??= command.Response;
 
         return response;

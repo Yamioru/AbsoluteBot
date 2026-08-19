@@ -9,7 +9,7 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 /// <summary>
 /// Команда получения ответа на вопрос с помощью Gemini.
 /// </summary>
-public class AskGeminiWithGoogleSearchCommand(AskGeminiService geminiService) : IChatCommand, IParameterized
+public class AskGeminiWithGoogleSearchCommand(INeuralAskService neuralAsk) : IChatCommand, IParameterized
 {
     public int Priority => 2;
     public string Description => "гуглит информацию в интернете и выдаёт.";
@@ -35,14 +35,14 @@ public class AskGeminiWithGoogleSearchCommand(AskGeminiService geminiService) : 
         if (command.Context.ChatService is IChatImageService chatImageService)
         {
             var image = await chatImageService.GetImageAsBase64Async(command.Parameters, command.Context);
-            response = await geminiService
-                .AskGeminiResponseAsync(prompt + command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message, image)
+            response = await neuralAsk
+                .AskWithSearchAsync(prompt + command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message, image)
                 .ConfigureAwait(false);
         }
         else
         {
-            response = await geminiService
-                .AskGeminiResponseAsync(prompt + command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message)
+            response = await neuralAsk
+                .AskWithSearchAsync(prompt + command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message)
                 .ConfigureAwait(false);
         }
 

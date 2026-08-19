@@ -62,7 +62,10 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IChatCommand, RemoveExtraCommand>()
             .AddSingleton<IChatCommand, RestartCommand>()
             .AddSingleton<IChatCommand, SetConfigValueCommand>()
+            .AddSingleton<IChatCommand, SetModelCommand>()
             .AddSingleton<IChatCommand, ShowAllConfigCommand>()
+            .AddSingleton<IChatCommand, ShowModelsCommand>()
+            .AddSingleton<IChatCommand, SwitchAiCommand>()
             .AddSingleton<IChatCommand, ShowCensorWordsCommand>()
             .AddSingleton<IChatCommand, ShowCommandStatusesCommand>()
             .AddSingleton<IChatCommand, ShowComplaintsCommand>()
@@ -219,12 +222,21 @@ public static class ServiceCollectionExtensions
         return services
             .AddSingleton<ChatGptService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ChatGptService>())
-            .AddSingleton<GeminiSettingsProvider>()
+            .AddSingleton<NeuralModelConfigService>()
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<NeuralModelConfigService>())
+            .AddSingleton(sp => new GeminiSettingsProvider(sp.GetRequiredService<ConfigService>(), new HttpClient()))
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<GeminiSettingsProvider>())
-            .AddSingleton<ChatGeminiService>()
-            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ChatGeminiService>())
-            .AddSingleton<AskGeminiService>()
-            .AddSingleton<GeminiImageGenerationService>()
+            .AddSingleton(sp => new GroqChatService(sp.GetRequiredService<ConfigService>(), new HttpClient()))
+            .AddSingleton<GeminiAskClient>()
+            .AddSingleton<GeminiChatClient>()
+            .AddSingleton<INeuralAskService, NeuralAskService>()
+            .AddSingleton<NeuralChatService>()
+            .AddSingleton<INeuralChatService>(sp => sp.GetRequiredService<NeuralChatService>())
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<NeuralChatService>())
+            .AddSingleton(sp => new GeminiImageGenerationService(
+                sp.GetRequiredService<GeminiSettingsProvider>(),
+                sp.GetRequiredService<NeuralModelConfigService>(),
+                new HttpClient()))
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ImageGenerationService>())
             .AddSingleton<ImageGenerationService>();
     }

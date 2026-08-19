@@ -18,7 +18,7 @@ namespace AbsoluteBot.Services.ScheduledTasks;
 ///     Сервис для мониторинга стримов на Twitch и обновления информации о стриме.
 /// </summary>
 public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, ConfigService configService,
-    TelegramChatService telegramChatService, DiscordChatService discordChatService, ChatGeminiService geminiService,
+    TelegramChatService telegramChatService, DiscordChatService discordChatService, INeuralChatService neuralChat,
     TelegramChannelManager telegramChannelManager,
     GameGoogleSheetsService gameGoogleSheetsService, StreamGoogleSheetsService streamGoogleSheetsService,
     GameProgressService gameProgressService, VkPlayChatService vkPlayChatService, ICommandRegistry commandRegistry,
@@ -95,7 +95,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
         await telegramChatService.SendMessageToChannelAsync("Стрим окончен!", telegramChatId.ToString()).ConfigureAwait(false);
         await telegramChatService.UnPinLastMessage(telegramChatId.ToString()).ConfigureAwait(false);
 
-        await geminiService.AddUserMessageToChatHistory("Стрим завершился!", "System").ConfigureAwait(false);
+        await neuralChat.AddUserMessageToChatHistory("Стрим завершился!", "System").ConfigureAwait(false);
     }
 
     /// <summary>
@@ -129,7 +129,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
         await UpdateGoogleSheetsForStreamStartAsync(stream.GameName, streamNumber).ConfigureAwait(false);
 
         // Уведомление самого бота о начале стрима
-        await geminiService.AddUserMessageToChatHistory($"Начался стрим, игра на стриме: {stream.GameName}!", "System").ConfigureAwait(false);
+        await neuralChat.AddUserMessageToChatHistory($"Начался стрим, игра на стриме: {stream.GameName}!", "System").ConfigureAwait(false);
     }
 
     /// <summary>

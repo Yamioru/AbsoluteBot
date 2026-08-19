@@ -8,7 +8,7 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 /// <summary>
 ///     Команда получения ответа на вопрос с помощью Gemini.
 /// </summary>
-public class AskGeminiCommand(AskGeminiService geminiService) : BaseCommand, IParameterized
+public class AskGeminiCommand(INeuralAskService neuralAsk) : BaseCommand, IParameterized
 {
     public override int Priority => 2;
     public override string Description => "выдаёт ответ на практически любой вопрос с помощью другой нейросети.";
@@ -27,11 +27,11 @@ public class AskGeminiCommand(AskGeminiService geminiService) : BaseCommand, IPa
         if (command.Context.ChatService is IChatImageService chatImageService)
         {
             var image = await chatImageService.GetImageAsBase64Async(command.Parameters, command.Context);
-            response = await geminiService.AskGeminiResponseAsync(command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message, image).ConfigureAwait(false);
+            response = await neuralAsk.AskAsync(command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message, image).ConfigureAwait(false);
         }
         else
         {
-            response = await geminiService.AskGeminiResponseAsync(command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message).ConfigureAwait(false);
+            response = await neuralAsk.AskAsync(command.Parameters, command.Context.MaxMessageLength, command.Context.Reply?.Message).ConfigureAwait(false);
         }
 
         // Логирование результата

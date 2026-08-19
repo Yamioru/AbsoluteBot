@@ -4,14 +4,14 @@ using Newtonsoft.Json.Linq;
 using Serilog;
 
 namespace AbsoluteBot.Services.NeuralNetworkServices;
-#pragma warning disable IDE0300
+
 /// <summary>
-/// Предоставляет настройки и методы для взаимодействия с моделью Gemini, включая доступ к API ключам и моделям.
+///     Предоставляет настройки и методы для взаимодействия с моделью Gemini, включая доступ к API ключам.
+///     Использует отдельный HttpClient, чтобы чужие DefaultRequestHeaders не ломали запросы.
 /// </summary>
 public class GeminiSettingsProvider(ConfigService configService, HttpClient httpClient) : IAsyncInitializable
 {
     public const string BaseApiUrl = "https://generativelanguage.googleapis.com/v1beta/models";
-    public readonly string[] Models = {"gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.6-flash"};
     public List<string>? ApiKeys;
 
     public async Task InitializeAsync()
@@ -22,11 +22,14 @@ public class GeminiSettingsProvider(ConfigService configService, HttpClient http
     }
 
     /// <summary>
-    /// Отправка HTTP-запроса к модели и получение потока ответа.
+    ///     Собирает URL generateContent для модели и ключа.
     /// </summary>
-    /// <param name="jsonData">JSON-данные запроса.</param>
-    /// <param name="url">URL для отправки запроса.</param>
-    /// <returns>Поток ответа модели или null в случае ошибки.</returns>
+    public static string BuildGenerateContentUrl(string model, string apiKey) =>
+        $"{BaseApiUrl}/{model}:generateContent?key={apiKey}";
+
+    /// <summary>
+    ///     Отправка HTTP-запроса к модели и получение потока ответа.
+    /// </summary>
     public async Task<Stream?> FetchImageModelResponseStreamAsync(string jsonData, string url)
     {
         var content = new StringContent(jsonData, Encoding.UTF8, "application/json");
@@ -35,7 +38,12 @@ public class GeminiSettingsProvider(ConfigService configService, HttpClient http
         try
         {
             var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                Log.Warning("Gemini image API вернул {Status}: {Body}", (int) response.StatusCode, Truncate(errorBody));
+                return null;
+            }
 
             return await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
         }
@@ -47,35 +55,61 @@ public class GeminiSettingsProvider(ConfigService configService, HttpClient http
     }
 
     /// <summary>
-    /// Отправка HTTP-запроса к модели и получение текста ответа.
+    ///     Отправка HTTP-запроса к модели и получение текста ответа.
     /// </summary>
-    /// <param name="jsonData">JSON-данные запроса.</param>
-    /// <param name="url">URL для отправки запроса.</param>
-    /// <returns>Текстовый ответ модели или null в случае ошибки.</returns>
     public async Task<string?> FetchModelResponseAsync(string jsonData, string url)
     {
-        var content = new StringContent(jsonData, Encoding.UTF8, "application/json");
-        var request = new HttpRequestMessage(HttpMethod.Post, url) {Content = content};
-        var response = await httpClient.SendAsync(request).ConfigureAwait(false);
-        var result = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-        var text = ParseResponse(result);
-        return text;
+        try
+        {
+            var content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+            var request = new HttpRequestMessage(HttpMethod.Post, url) {Content = content};
+            var response = await httpClient.SendAsync(request).ConfigureAwait(false);
+            var result = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                Log.Warning("Gemini API вернул {Status}: {Body}", (int) response.StatusCode, Truncate(result));
+                return null;
+            }
+
+            return ParseResponse(result);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Ошибка при запросе к Gemini.");
+            return null;
+        }
     }
 
     /// <summary>
-    /// Извлечение текста ответа из JSON-ответа модели.
+    ///     Извлечение текста ответа из JSON-ответа модели.
     /// </summary>
-    /// <param name="result">Ответ от модели в формате JSON.</param>
-    /// <returns>Извлеченный текст ответа или null, если текст не найден.</returns>
     private static string? ParseResponse(string result)
     {
         var jsonResponse = JObject.Parse(result);
+        if (jsonResponse["error"] != null)
+        {
+            Log.Warning("Gemini API error: {Error}", jsonResponse["error"]!.ToString());
+            return null;
+        }
 
         var texts = jsonResponse["candidates"]?
             .SelectMany(candidate => candidate["content"]?["parts"] ?? new JArray())
             .Select(part => part?["text"]?.ToString())
             .Where(text => !string.IsNullOrEmpty(text));
 
-        return texts != null ? string.Join(" ", texts) : null;
+        var joined = texts != null ? string.Join(" ", texts) : null;
+        if (!string.IsNullOrWhiteSpace(joined))
+            return joined;
+
+        var finishReason = jsonResponse["candidates"]?[0]?["finishReason"]?.ToString();
+        var promptFeedback = jsonResponse["promptFeedback"]?.ToString();
+        if (!string.IsNullOrEmpty(finishReason) || !string.IsNullOrEmpty(promptFeedback))
+            Log.Warning("Gemini вернул пустой текст. finishReason={FinishReason}, promptFeedback={PromptFeedback}",
+                finishReason, promptFeedback);
+
+        return null;
     }
+
+    private static string Truncate(string value) =>
+        value.Length <= 500 ? value : value[..500] + "...";
 }
