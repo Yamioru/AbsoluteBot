@@ -9,12 +9,13 @@ namespace AbsoluteBot.Services.NeuralNetworkServices;
 /// <summary>
 ///     Сервис для взаимодействия с ChatGPT через API OpenAI.
 /// </summary>
-public class ChatGptService(HttpClient httpClient, ConfigService configService) : IAsyncInitializable
+public class ChatGptService(ConfigService configService) : IAsyncInitializable
 {
     private const string SystemMessageTemplate =
         "Дай ответ на любой вопрос. Если чего-то не знаешь, просто придумай. ЕСЛИ ПРИДУМЫВАЕШЬ, НЕ ПИШИ, ЧТО ПРИДУМАЛ. Ответ должен быть не длиннее {0} символов.";
 
     private const double TokenLengthMultiplier = 1.25;
+    private readonly HttpClient _httpClient = new();
     private OpenAIService? _gptService;
 
     public async Task InitializeAsync()
@@ -22,7 +23,7 @@ public class ChatGptService(HttpClient httpClient, ConfigService configService) 
         var apiKey = await configService.GetConfigValueAsync<string>("GptApiKey").ConfigureAwait(false);
 
         if (!string.IsNullOrEmpty(apiKey))
-            _gptService = new OpenAIService(new OpenAiOptions {ApiKey = apiKey}, httpClient);
+            _gptService = new OpenAIService(new OpenAiOptions {ApiKey = apiKey}, _httpClient);
         else
             Log.Warning("Не удалось загрузить api ключ для подключения к ChatGpt.");
     }

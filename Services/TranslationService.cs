@@ -14,12 +14,13 @@ public class TranslationService(HttpClient httpClient, ConfigService configServi
     private const string ApiUrl = "https://api-free.deepl.com/v2/translate";
     private const string DefaultFormality = "prefer_less";
     private bool _isConfigured;
+    private string? _apiKey;
 
     public async Task InitializeAsync()
     {
-        var apiKey = await configService.GetConfigValueAsync<string>("DeepLApiKey").ConfigureAwait(false);
-        httpClient.DefaultRequestHeaders.Add("Authorization", "DeepL-Auth-Key " + apiKey);
-        if (string.IsNullOrEmpty(apiKey))
+        if (_isConfigured) return;
+        _apiKey = await configService.GetConfigValueAsync<string>("DeepLApiKey").ConfigureAwait(false);
+        if (string.IsNullOrEmpty(_apiKey))
             Log.Warning("Не удалось загрузить api ключ для deepl.");
         else
             _isConfigured = true;
@@ -91,7 +92,11 @@ public class TranslationService(HttpClient httpClient, ConfigService configServi
     private async Task<HttpResponseMessage> SendTranslationRequestAsync(object requestData)
     {
         var jsonRequestData = JsonConvert.SerializeObject(requestData);
-        using var content = new StringContent(jsonRequestData, Encoding.UTF8, "application/json");
-        return await httpClient.PostAsync(ApiUrl, content).ConfigureAwait(false);
+        using var request = new HttpRequestMessage(HttpMethod.Post, ApiUrl)
+        {
+            Content = new StringContent(jsonRequestData, Encoding.UTF8, "application/json")
+        };
+        request.Headers.TryAddWithoutValidation("Authorization", "DeepL-Auth-Key " + _apiKey);
+        return await httpClient.SendAsync(request).ConfigureAwait(false);
     }
 }
