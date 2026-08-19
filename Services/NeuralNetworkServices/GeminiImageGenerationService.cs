@@ -5,9 +5,11 @@ using Serilog;
 namespace AbsoluteBot.Services.NeuralNetworkServices;
 
 /// <summary>
-/// Сервис для генерации изображений с помощью Gemini
+///     Устаревший сервис генерации/правки картинок через Gemini.
+///     Живая команда <c>!нарисуй</c> использует <see cref="CloudflareFluxImageService"/>.
+///     Оставлен на случай, если Google снова откроет image API на бесплатных ключах.
 /// </summary>
-/// <param name="settingsProvider"></param>
+[Obsolete("Живая команда !нарисуй идёт через CloudflareFluxImageService. Оставлен как запасной путь для Gemini image API.")]
 public class GeminiImageGenerationService(
     GeminiSettingsProvider settingsProvider,
     NeuralModelConfigService modelConfig,

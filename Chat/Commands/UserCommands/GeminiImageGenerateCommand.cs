@@ -1,10 +1,13 @@
 ﻿using AbsoluteBot.Chat.Context;
+using AbsoluteBot.Services;
 using AbsoluteBot.Services.ChatServices.Interfaces;
 using AbsoluteBot.Services.NeuralNetworkServices;
 
 namespace AbsoluteBot.Chat.Commands.UserCommands;
 
-internal class GeminiImageGenerateCommand(GeminiImageGenerationService imageGenerationService) : IChatCommand,
+internal class GeminiImageGenerateCommand(
+    CloudflareFluxImageService imageGenerationService,
+    TranslationService translationService) : IChatCommand,
     IParameterized
 {
     public string Description => "качественно генерирует картинку по запросу.";
@@ -17,40 +20,26 @@ internal class GeminiImageGenerateCommand(GeminiImageGenerationService imageGene
 
         // Проверка содержит ли команда параметры,елс они нужны
         if (!HasRequiredParameters(ref command)) return command.Response!;
-        string? text;
-        string? base64Image;
+
+        var translatedPrompt = await translationService.TranslateTextAsync(command.Parameters, "EN").ConfigureAwait(false);
+        var prompt = string.IsNullOrEmpty(translatedPrompt) ? command.Parameters : translatedPrompt;
+
+        string? sourceImage = null;
         if (command.Context.ChatService is IChatImageService chatImageService)
-        {
-            var image = await chatImageService.GetImageAsBase64Async(command.Parameters, command.Context);
-            (text, base64Image) = await imageGenerationService.GenerateImageGeminiResponseAsync(command.Parameters, image);
-        }
-        else
-        {
-            (text, base64Image) = await imageGenerationService.GenerateImageGeminiResponseAsync(command.Parameters);
-        }
+            sourceImage = await chatImageService.GetImageAsBase64Async(command.Parameters, command.Context).ConfigureAwait(false);
+
+        var base64Image = await imageGenerationService.GenerateOrEditAsync(prompt, sourceImage).ConfigureAwait(false);
 
         if (string.IsNullOrEmpty(base64Image))
         {
-            if (string.IsNullOrEmpty(text))
-            {
-                await command.Context.ChatService.SendMessageAsync("Не удалось создать картинку.", command.Context).ConfigureAwait(false);
-                return "Не удалось создать картинку.";
-            }
-
-            await command.Context.ChatService.SendMessageAsync(text, command.Context).ConfigureAwait(false);
-            return text;
+            await command.Context.ChatService.SendMessageAsync("Не удалось создать картинку.", command.Context).ConfigureAwait(false);
+            return "Не удалось создать картинку.";
         }
 
         if (command.Context.ChatService is IPhotoSendingService photoSendingService)
         {
             await photoSendingService.SendPhotoBase64Async(base64Image, command.Context).ConfigureAwait(false);
-            if (string.IsNullOrEmpty(text))
-            {
-                return "картинка";
-            }
-
-            await command.Context.ChatService.SendMessageAsync(text, command.Context).ConfigureAwait(false);
-            return text;
+            return "картинка";
         }
 
         await command.Context.ChatService.SendMessageAsync("Не удалось создать картинку.", command.Context).ConfigureAwait(false);

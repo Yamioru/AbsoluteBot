@@ -31,7 +31,8 @@ public class NeuralModelConfigService : IAsyncInitializable
 
     /// <summary>
     ///     Возвращает модель для сущности с учётом текущего провайдера.
-    ///     Сущность <see cref="NeuralEntities.Image" /> всегда берётся из Gemini.
+    ///     Сущность <see cref="NeuralEntities.Image" /> всегда берётся из Gemini
+    ///     (запасной конфиг для устаревшего Gemini image-клиента; живой <c>!нарисуй</c> идёт через Cloudflare).
     /// </summary>
     public string GetModel(string entity)
     {
@@ -78,7 +79,7 @@ public class NeuralModelConfigService : IAsyncInitializable
 
     /// <summary>
     ///     Задаёт модель для сущности. Если провайдер не указан — используется текущий.
-    ///     Image всегда пишется в секцию Gemini.
+    ///     Image всегда пишется в секцию Gemini (запасной конфиг, не влияет на живой <c>!нарисуй</c>).
     /// </summary>
     public async Task<bool> SetModelAsync(string entity, string modelId, string? provider = null)
     {
@@ -132,16 +133,23 @@ public class NeuralModelConfigService : IAsyncInitializable
             $"Провайдер: {_document.Provider}"
         };
 
+        lines.Add($"!нарисуй: Cloudflare {CloudflareFluxImageService.ModelId}");
         lines.Add("Gemini:");
         foreach (var entity in NeuralEntities.All)
-            lines.Add($"  {entity}: {GetModelFromMap(_document.Gemini, entity, NeuralModelsDocument.GetDefaultModel(entity, NeuralProviders.Gemini))}");
+        {
+            var model = GetModelFromMap(_document.Gemini, entity, NeuralModelsDocument.GetDefaultModel(entity, NeuralProviders.Gemini));
+            if (entity == NeuralEntities.Image)
+                lines.Add($"  {entity}: {model} (запасной, не используется !нарисуй)");
+            else
+                lines.Add($"  {entity}: {model}");
+        }
 
         lines.Add("Groq:");
         foreach (var entity in NeuralEntities.All)
         {
             if (entity == NeuralEntities.Image)
             {
-                lines.Add("  Image: (всегда Gemini)");
+                lines.Add("  Image: (запасной Gemini, не используется !нарисуй)");
                 continue;
             }
 

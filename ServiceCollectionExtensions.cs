@@ -233,10 +233,16 @@ public static class ServiceCollectionExtensions
             .AddSingleton<NeuralChatService>()
             .AddSingleton<INeuralChatService>(sp => sp.GetRequiredService<NeuralChatService>())
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<NeuralChatService>())
+#pragma warning disable CS0618
             .AddSingleton(sp => new GeminiImageGenerationService(
                 sp.GetRequiredService<GeminiSettingsProvider>(),
                 sp.GetRequiredService<NeuralModelConfigService>(),
                 new HttpClient()))
+#pragma warning restore CS0618
+            .AddSingleton(sp => new CloudflareFluxImageService(
+                sp.GetRequiredService<ConfigService>(),
+                new HttpClient()))
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<CloudflareFluxImageService>())
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ImageGenerationService>())
             .AddSingleton<ImageGenerationService>();
     }
