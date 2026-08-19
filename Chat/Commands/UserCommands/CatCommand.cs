@@ -10,7 +10,7 @@ public class CatCommand(CatImageService catImageService) : BaseMediaCommand
 {
     public override int Priority => 403;
     public override string Name => "!котик";
-    public override string Description => "присылает картинку забавного котика.";
+    public override string Description => "присылает картинку забавного котика...";
 
     protected override async Task<string> ExecuteLogicAsync(ParsedCommand command)
     {

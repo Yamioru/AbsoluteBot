@@ -37,7 +37,7 @@ public partial class VideoSearchService(HttpClient httpClient)
         }
         catch (HttpRequestException ex)
         {
-            Log.Error(ex, "Ошибка при поиске видео - HTTP запрос не выполнен.");
+            Log.Error(ex, "Ошибка при поиске видео - HTTP2 запрос не выполнен.");
             return DefaultVideoUrl;
         }
         catch (Exception ex)
