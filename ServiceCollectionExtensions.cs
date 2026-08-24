@@ -99,6 +99,8 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<VkPlayMessageDataProcessor>())
             .AddSingleton<TelegramChannelManager>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<TelegramChannelManager>())
+            .AddSingleton(CreateVkPlayAuthService)
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<VkPlayAuthService>())
             .AddSingleton<VkPlayMessageSender>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<VkPlayMessageSender>())
             .AddSingleton<TwitchImageProcessor>()
@@ -415,5 +417,15 @@ public static class ServiceCollectionExtensions
             .AddSingleton<LayoutCorrectionService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<LayoutCorrectionService>())
             .AddSingleton<WebContentService>();
+    }
+
+    private static VkPlayAuthService CreateVkPlayAuthService(IServiceProvider sp)
+    {
+        var httpClient = new HttpClient();
+        return new VkPlayAuthService(
+            sp.GetRequiredService<ConfigService>(),
+            httpClient,
+            sp.GetRequiredService<TelegramChatService>(),
+            sp.GetRequiredService<TelegramChannelManager>());
     }
 }

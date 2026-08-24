@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AbsoluteBot.Models;
@@ -10,7 +11,8 @@ namespace AbsoluteBot.Services.ChatServices.VkPlayLive;
 /// <summary>
 /// Отвечает за отправку сообщений в VkPlayLive через HTTP-запросы.
 /// </summary>
-public partial class VkPlayMessageSender(ConfigService configService, HttpClient httpClient) : IAsyncInitializable
+public partial class VkPlayMessageSender(ConfigService configService, HttpClient httpClient, VkPlayAuthService? authService = null)
+    : IAsyncInitializable
 {
     private const string VkPlayApiUrlFormat = "https://api.live.vkplay.ru/v1/blog/{0}/public_video_stream/chat";
     private const string TextBlockType = "text";
@@ -24,7 +26,7 @@ public partial class VkPlayMessageSender(ConfigService configService, HttpClient
     {
         _authSendToken = await configService.GetConfigValueAsync<string>("VkPlayAuthSendToken").ConfigureAwait(false);
         _channelName = await configService.GetConfigValueAsync<string>("VkPlayChannelName").ConfigureAwait(false);
-        if (string.IsNullOrEmpty(_authSendToken) || string.IsNullOrEmpty(_channelName))
+        if (string.IsNullOrEmpty(ResolveSendToken()) || string.IsNullOrEmpty(_channelName))
             Log.Warning("Не удалось данные для отправки сообщений в vkplaylive.");
     }
 
@@ -35,20 +37,37 @@ public partial class VkPlayMessageSender(ConfigService configService, HttpClient
     /// <param name="messageId">Идентификатор сообщения, на которое нужно ответить, если не нужны отвечать, то не указывать.</param>
     public async Task PostMessageAsync(string message, int messageId = 0)
     {
-        if (_authSendToken == null || _channelName == null) return;
+        var token = ResolveSendToken();
+        if (token == null || _channelName == null) return;
 
-        // Создание url запроса
-        var url = string.Format(VkPlayApiUrlFormat, _channelName);
+        using var response = await SendOnceAsync(message, messageId, token).ConfigureAwait(false);
+        if (!IsUnauthorized(response))
+        {
+            response.EnsureSuccessStatusCode();
+            return;
+        }
 
-        // Создание контента запроса
-        var data = "data=" + SerializeMessage(message);
-        if (messageId > 0) data += $"&reply_to_id={messageId}";
-        using var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {_authSendToken}");
-        request.Content = new StringContent(data, Encoding.UTF8, ContentType);
+        if (authService != null && await authService.TryRefreshAsync().ConfigureAwait(false))
+        {
+            var refreshed = ResolveSendToken();
+            if (!string.IsNullOrEmpty(refreshed))
+            {
+                _authSendToken = refreshed;
+                using var retry = await SendOnceAsync(message, messageId, refreshed).ConfigureAwait(false);
+                if (!IsUnauthorized(retry))
+                {
+                    retry.EnsureSuccessStatusCode();
+                    return;
+                }
+            }
+        }
 
-        // Отправка запроса
-        var response = await httpClient.SendAsync(request).ConfigureAwait(false);
+        if (authService != null)
+        {
+            await authService.NotifyAuthFailedAsync().ConfigureAwait(false);
+            return;
+        }
+
         response.EnsureSuccessStatusCode();
     }
 
@@ -60,6 +79,28 @@ public partial class VkPlayMessageSender(ConfigService configService, HttpClient
     public void SetAuthSendToken(string token)
     {
         _authSendToken = token;
+    }
+
+    private string? ResolveSendToken()
+    {
+        if (!string.IsNullOrEmpty(authService?.AccessToken)) return authService.AccessToken;
+        return _authSendToken;
+    }
+
+    private async Task<HttpResponseMessage> SendOnceAsync(string message, int messageId, string token)
+    {
+        var url = string.Format(VkPlayApiUrlFormat, _channelName);
+        var data = "data=" + SerializeMessage(message);
+        if (messageId > 0) data += $"&reply_to_id={messageId}";
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
+        request.Content = new StringContent(data, Encoding.UTF8, ContentType);
+        return await httpClient.SendAsync(request).ConfigureAwait(false);
+    }
+
+    private static bool IsUnauthorized(HttpResponseMessage response)
+    {
+        return response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
     }
 
     /// <summary>

@@ -13,7 +13,7 @@ namespace AbsoluteBot.Services.ChatServices.VkPlayLive;
 /// </summary>
 public class VkPlayChatService(ConfigService configService, ICensorshipService censorshipService, UrlShortenerService urlShortenerService,
         VkPlayMessageSender messageSender, VkPlayMessageHandler messageHandler, VkPlayMessageDataProcessor messageProcessor,
-        VkPlayImageProcessor imageProcessor, StreamChatterStatsService streamChatterStatsService)
+        VkPlayImageProcessor imageProcessor, StreamChatterStatsService streamChatterStatsService, VkPlayAuthService authService)
     : IChatService, IUrlShorteningService, IAsyncDisposable, IAsyncInitializable, IChatImageService
 {
     public const int MaxMessageLength = 500;
@@ -41,7 +41,7 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
         try
         {
             var webSocketManager = new WebSocketConnectionManager();
-            _connectionManager = CreateConnectionManager(configService, webSocketManager, messageSender);
+            _connectionManager = CreateConnectionManager(configService, webSocketManager, authService);
             if (!await _connectionManager.InitializeAsync().ConfigureAwait(false)) return;
             _messageReceiver = CreateMessageReceiver(webSocketManager, _connectionManager);
             _messageReceiver.OnMessageReceived += async (_, message) => await ProcessReceivedMessageAsync(message).ConfigureAwait(false);
@@ -127,10 +127,12 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
     /// </summary>
     /// <param name="configService">Сервис для получения конфигурационных данных.</param>
     /// <param name="webSocketManager">Менеджер WebSocket-соединений.</param>
+    /// <param name="vkPlayAuthService">Сервис сессии VK Live.</param>
     /// <returns>Возвращает экземпляр <see cref="VkPlayConnectionManager" />.</returns>
-    private static VkPlayConnectionManager CreateConnectionManager(ConfigService configService, WebSocketConnectionManager webSocketManager, VkPlayMessageSender vkPlayMessageSender)
+    private static VkPlayConnectionManager CreateConnectionManager(ConfigService configService, WebSocketConnectionManager webSocketManager,
+        VkPlayAuthService vkPlayAuthService)
     {
-        return new VkPlayConnectionManager(webSocketManager, configService, vkPlayMessageSender);
+        return new VkPlayConnectionManager(webSocketManager, configService, vkPlayAuthService);
     }
 
     /// <summary>
