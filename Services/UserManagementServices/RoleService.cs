@@ -65,6 +65,15 @@ public class RoleService : IAsyncInitializable
     }
 
     /// <summary>
+    ///     Возвращает уже известную роль без записи нового пользователя в файл.
+    /// </summary>
+    public virtual UserRole GetExistingUserRole(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return UserRole.Default;
+        return _userRoles.TryGetValue(username.ToLower(), out var role) ? role : UserRole.Default;
+    }
+
+    /// <summary>
     ///     Асинхронно назначает новую роль пользователю.
     ///     Администраторы не могут быть понижены в правах.
     /// </summary>

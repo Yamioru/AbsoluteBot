@@ -22,7 +22,7 @@ namespace AbsoluteBot.Services.ChatServices.TwitchChat;
 /// </summary>
 public class TwitchChatService(ConfigService configService, UrlShortenerService urlShortenerService, ICensorshipService censorshipService,
         TwitchMessageHandler messageHandler, TwitchMessageDataProcessor messageDataProcessor, TwitchImageProcessor imageProcessor,
-        StreamChatterStatsService streamChatterStatsService)
+        StreamChatterStatsService streamChatterStatsService, ChatAchievementService chatAchievementService)
     : IChatService, IDisposable, IUrlShorteningService, IAsyncInitializable, IChatImageService
 {
     private const int ReconnectDelayMilliseconds = 5000;
@@ -243,6 +243,7 @@ public class TwitchChatService(ConfigService configService, UrlShortenerService 
             if (!_messageIdDeduplicator.TryTake(e.ChatMessage.Id)) return;
             if (!messageDataProcessor.TryParseValidMessage(e.ChatMessage, this, out var messageText, out var context)) return;
             await streamChatterStatsService.RecordMessageAsync(context.DisplayedName).ConfigureAwait(false);
+            _ = chatAchievementService.TryRecordAsync(context.DisplayedName, messageText, "Twitch");
             var processedMessage = await messageHandler.HandleMessageAsync(messageText, context).ConfigureAwait(false);
             // Вызов события для дальнейшей обработки
             MessageReceived?.Invoke(this, new MessageReceivedEventArgs(processedMessage, context));

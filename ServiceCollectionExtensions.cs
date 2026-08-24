@@ -279,6 +279,11 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<WisdomService>())
             .AddSingleton<StreamChatterStatsService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<StreamChatterStatsService>())
+            .AddSingleton(sp => new OnnxNliAchievementClassifier(new HttpClient {Timeout = TimeSpan.FromMinutes(8)}))
+            .AddSingleton<IAchievementClassifier>(sp => sp.GetRequiredService<OnnxNliAchievementClassifier>())
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<OnnxNliAchievementClassifier>())
+            .AddSingleton<ChatAchievementService>()
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ChatAchievementService>())
             .AddSingleton<TextCommandService>();
     }
 

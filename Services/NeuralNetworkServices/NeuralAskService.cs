@@ -16,6 +16,10 @@ public class NeuralAskService(
         string? base64Image = null, string? instruction = null, double temperature = 1.0) =>
         AskCoreAsync(NeuralEntities.GoogleSearch, message, maxLength, replyMessage, base64Image, instruction, temperature, true);
 
+    public Task<string?> AskEntityAsync(string entity, string message, int maxLength, string instruction,
+        double temperature = 0.2) =>
+        AskCoreAsync(entity, message, maxLength, null, null, instruction, temperature, false);
+
     private async Task<string?> AskCoreAsync(string entity, string message, int maxLength, string? replyMessage,
         string? base64Image, string? instruction, double temperature, bool enableGeminiGoogleSearch)
     {

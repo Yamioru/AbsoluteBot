@@ -13,7 +13,8 @@ namespace AbsoluteBot.Services.ChatServices.VkPlayLive;
 /// </summary>
 public class VkPlayChatService(ConfigService configService, ICensorshipService censorshipService, UrlShortenerService urlShortenerService,
         VkPlayMessageSender messageSender, VkPlayMessageHandler messageHandler, VkPlayMessageDataProcessor messageProcessor,
-        VkPlayImageProcessor imageProcessor, StreamChatterStatsService streamChatterStatsService, VkPlayAuthService authService)
+        VkPlayImageProcessor imageProcessor, StreamChatterStatsService streamChatterStatsService, VkPlayAuthService authService,
+        ChatAchievementService chatAchievementService)
     : IChatService, IUrlShorteningService, IAsyncDisposable, IAsyncInitializable, IChatImageService
 {
     public const int MaxMessageLength = 500;
@@ -180,6 +181,7 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
             if (messageProcessor.TryParseValidMessage(message, this, out var messageText, out var context))
             {
                 await streamChatterStatsService.RecordMessageAsync(context.Username).ConfigureAwait(false);
+                _ = chatAchievementService.TryRecordAsync(context.Username, messageText, "VkPlayLive");
                 // Обработка сообщения с учетом упоминаний и цензуры
                 var processedMessage = await messageHandler.HandleMessageAsync(messageText, context).ConfigureAwait(false);
                 MessageReceived?.Invoke(this, new MessageReceivedEventArgs(processedMessage, context));

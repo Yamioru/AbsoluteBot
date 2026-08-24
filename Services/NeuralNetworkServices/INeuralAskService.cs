@@ -16,4 +16,9 @@ public interface INeuralAskService
     /// </summary>
     Task<string?> AskWithSearchAsync(string message, int maxLength, string? replyMessage = null, string? base64Image = null,
         string? instruction = null, double temperature = 1.0);
+
+    /// <summary>
+    ///     Одиночный запрос к указанной сущности (Chat/Ask/GoogleSearch).
+    /// </summary>
+    Task<string?> AskEntityAsync(string entity, string message, int maxLength, string instruction, double temperature = 0.2);
 }
