@@ -11,7 +11,7 @@ public class RestartCommand(IProcessController processController) : BaseCommand
 {
     public override int Priority => -11;
     public override string Name => "!перезагрузка";
-    public override string Description => "перезапускает приложение.";
+    public override string Description => "перезапускает бота (в Docker — перезапуск контейнера).";
 
     public override bool CanExecute(ParsedCommand command)
     {
