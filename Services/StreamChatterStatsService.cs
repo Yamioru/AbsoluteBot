@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using AbsoluteBot.Models;
 using AbsoluteBot.Services.UtilityServices;
 using Serilog;
@@ -19,7 +21,8 @@ public class StreamChatterStatsService(ConfigService configService) : IAsyncInit
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
     };
 
     private readonly ConcurrentDictionary<string, StreamChatterCount> _counts = new(StringComparer.OrdinalIgnoreCase);
