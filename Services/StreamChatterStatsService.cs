@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Unicode;
 using AbsoluteBot.Models;
 using AbsoluteBot.Services.UtilityServices;
 using Serilog;
@@ -22,7 +21,7 @@ public class StreamChatterStatsService(ConfigService configService) : IAsyncInit
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
-        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     private readonly ConcurrentDictionary<string, StreamChatterCount> _counts = new(StringComparer.OrdinalIgnoreCase);
@@ -35,6 +34,8 @@ public class StreamChatterStatsService(ConfigService configService) : IAsyncInit
         {
             _streamNumber = await configService.GetConfigValueAsync<int>("StreamNumber").ConfigureAwait(false);
             await LoadUnlockedAsync().ConfigureAwait(false);
+            if (File.Exists(GetStatsFilePath(_streamNumber)))
+                await SaveUnlockedAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -154,9 +155,12 @@ public class StreamChatterStatsService(ConfigService configService) : IAsyncInit
             StreamNumber = _streamNumber,
             Chatters = GetChattersSnapshot().ToList()
         };
-        var json = JsonSerializer.Serialize(document, JsonOptions);
         var tempFilePath = Path.GetTempFileName();
-        await File.WriteAllTextAsync(tempFilePath, json).ConfigureAwait(false);
+        await using (var stream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            await JsonSerializer.SerializeAsync(stream, document, JsonOptions).ConfigureAwait(false);
+        }
+
         await Task.Run(() => File.Move(tempFilePath, path, true)).ConfigureAwait(false);
     }
 }
