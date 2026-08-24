@@ -24,6 +24,10 @@ public partial class VkPlayAuthService : IAsyncInitializable, IDisposable
     internal const string RequestCookiesFileName = "vkplay_request_cookies.txt";
     internal const long MillisecondTimestampThreshold = 1_000_000_000_000L;
     internal const int TokenExpiresShiftMilliseconds = 10 * 60 * 1000;
+    /// <summary>
+    ///     <see cref="Task.Delay(TimeSpan)" /> принимает не больше ~49.7 суток; планируем кусками по суткам.
+    /// </summary>
+    internal const int MaxScheduleDelayMilliseconds = 24 * 60 * 60 * 1000;
 
     private const string RefreshUrl = "https://api.live.vkvideo.ru/oauth/token/";
     private const string WsConnectUrl = "https://api.live.vkvideo.ru/v1/ws/connect";
@@ -155,6 +159,12 @@ public partial class VkPlayAuthService : IAsyncInitializable, IDisposable
     internal static long NormalizeExpiresAt(long value)
     {
         return value > MillisecondTimestampThreshold ? value : value * 1000;
+    }
+
+    internal static long ClampRefreshDelayMs(long delayMs)
+    {
+        if (delayMs < 1000) return 1000;
+        return delayMs > MaxScheduleDelayMilliseconds ? MaxScheduleDelayMilliseconds : delayMs;
     }
 
     internal static string? ExtractClientIdFromCookieTemplate(string? template)
@@ -379,8 +389,8 @@ public partial class VkPlayAuthService : IAsyncInitializable, IDisposable
         _refreshCts?.Cancel();
         _refreshCts?.Dispose();
         _refreshCts = new CancellationTokenSource();
-        var delayMs = ExpiresAtMs - TokenExpiresShiftMilliseconds - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        if (delayMs < 1000) delayMs = 1000;
+        var delayMs = ClampRefreshDelayMs(
+            ExpiresAtMs - TokenExpiresShiftMilliseconds - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         var token = _refreshCts.Token;
         _ = RefreshWhenDueAsync(TimeSpan.FromMilliseconds(delayMs), token);
     }
@@ -390,8 +400,14 @@ public partial class VkPlayAuthService : IAsyncInitializable, IDisposable
         try
         {
             await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-            if (!await TryRefreshAsync().ConfigureAwait(false))
-                await NotifyAuthFailedAsync().ConfigureAwait(false);
+            if (IsAccessTokenExpired())
+            {
+                if (!await TryRefreshAsync().ConfigureAwait(false))
+                    await NotifyAuthFailedAsync().ConfigureAwait(false);
+                return;
+            }
+
+            ScheduleRefresh();
         }
         catch (OperationCanceledException)
         {

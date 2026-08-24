@@ -209,9 +209,13 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
                 ? vkPlayMessageEnvelope.Push.Publication.MessageContainer.Message
                 : null;
         }
+        catch (JsonException)
+        {
+            return null;
+        }
         catch (Exception ex)
         {
-            Log.Error(ex, "Ошибка при парсинге сообщения VkPlayLive." + rawMessage);
+            Log.Error(ex, "Ошибка при парсинге сообщения VkPlayLive.");
             return null;
         }
     }

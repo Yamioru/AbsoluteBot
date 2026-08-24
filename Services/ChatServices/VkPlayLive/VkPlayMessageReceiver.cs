@@ -56,6 +56,22 @@ public class VkPlayMessageReceiver
     }
 
     /// <summary>
+    ///     Centrifugo может прислать несколько JSON в одном кадре, через перевод строки
+    ///     (ответы connect+subscribe при старте).
+    /// </summary>
+    internal static IReadOnlyList<string> SplitWebSocketPayload(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return Array.Empty<string>();
+        if (!raw.Contains('\n')) return new[] {raw};
+
+        var parts = new List<string>();
+        foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            if (line.Length > 0)
+                parts.Add(line);
+        return parts;
+    }
+
+    /// <summary>
     ///     Асинхронно получает сообщения через WebSocket и обрабатывает их.
     /// </summary>
     private async Task ReceiveMessagesAsync()
@@ -65,12 +81,11 @@ public class VkPlayMessageReceiver
             {
                 var message = await _webSocketManager.ReceiveMessageAsync().ConfigureAwait(false);
 
-                // Ping-Pong: если получает ping-сообщение, отправляет pong
-                if (message == "{}")
-                    await _webSocketManager.SendMessageAsync("{}").ConfigureAwait(false);
-                else
-                    // Вызывается событие для обработки полученного сообщения
-                    OnMessageReceived?.Invoke(this, message);
+                foreach (var part in SplitWebSocketPayload(message))
+                    if (part == "{}")
+                        await _webSocketManager.SendMessageAsync("{}").ConfigureAwait(false);
+                    else
+                        OnMessageReceived?.Invoke(this, part);
             }
             catch (Exception ex)
             {
