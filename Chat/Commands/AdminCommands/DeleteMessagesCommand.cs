@@ -10,7 +10,7 @@ namespace AbsoluteBot.Chat.Commands.AdminCommands;
 public class DeleteMessagesCommand : BaseCommand, IParameterized
 {
     public override int Priority => 100;
-    public override string Description => "удаляет до 15 последних сообщений в чате.";
+    public override string Description => "удаляет до 15 последних сообщений в чате..";
     public override string Name => "!удалить";
     public string Parameters => "число";
 
