@@ -1,4 +1,5 @@
 ﻿using AbsoluteBot.Chat.Context;
+using AbsoluteBot.Helpers;
 using AbsoluteBot.Services.ChatServices.TelegramChat;
 using AbsoluteBot.Services.MediaServices;
 using AbsoluteBot.Services.NeuralNetworkServices;
@@ -13,7 +14,13 @@ public class TelegramTasksService(TelegramChannelManager telegramChannelManager,
     HolidaysService holidaysService, INeuralAskService neuralAsk, ExchangeRateService exchangeRateService)
 {
     private const string DateFormat = "dd.MM";
-    private const int MaxFactLength = 200;
+    internal const int MaxFactLength = 450;
+    internal const int MaxPostLength = 700;
+
+    internal const string HolidayInstruction =
+        "Короткий ответ: 3–6 предложений, строго не больше 450 символов. " +
+        "Один малоизвестный факт в духе «а ты знал, что…». Без заголовков #, без списков, без «Короткий итог», без длинной статьи. " +
+        "Можно выделить 1–2 слова **жирным**. Не используй одинарные * для курсива.";
 
     /// <summary>
     ///     Выполняет ежедневные задачи в Telegram, такие как отправка информации о праздниках и курсе валют.
@@ -32,6 +39,14 @@ public class TelegramTasksService(TelegramChannelManager telegramChannelManager,
         {
             Log.Error(ex, "Ошибка при выполнении ежедневных задач в Telegram.");
         }
+    }
+
+    internal static string BuildHolidayHtml(string holiday, string? fact)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(fact) ? string.Empty : fact.Trim();
+        if (trimmed.Length > MaxFactLength)
+            trimmed = TextProcessingUtils.CutSentence(trimmed, MaxFactLength);
+        return TelegramHtmlFormatter.Compose($"Сегодня праздник: {holiday}", trimmed, MaxPostLength);
     }
 
     /// <summary>
@@ -53,9 +68,13 @@ public class TelegramTasksService(TelegramChannelManager telegramChannelManager,
     {
         var today = DateTime.Today.ToString(DateFormat);
         var holiday = holidaysService.GetHoliday(today);
-        var fact = await neuralAsk.AskAsync($"Расскажи что-нибудь интересное и возможно малоизвестное на тему связанной с праздником {holiday}, который отмечается {today}.", MaxFactLength, instruction: "Информация должна быть действительно интересной, а не просто каким-то пресным фактом, такой информацией что-бы человека захотелось потом рассказать другим, что-нибудь по типу, а вот ты знал, что... и эта информация. А в ответ бы ему сказали, ого, прикольно.", temperature: 2.0)
+        var fact = await neuralAsk.AskAsync(
+                $"Расскажи один короткий малоизвестный факт про праздник «{holiday}» ({today}).",
+                MaxFactLength,
+                instruction: HolidayInstruction,
+                temperature: 0.8)
             .ConfigureAwait(false);
-        await telegramChatService.SendMessageToChannelAsync($"Сегодня праздник: {holiday}\nВот кое-что интересное на эту тему: {fact}", channelId.ToString())
-            .ConfigureAwait(false);
+        var html = BuildHolidayHtml(holiday, fact);
+        await telegramChatService.SendHtmlMessageToChannelAsync(html, channelId.ToString()).ConfigureAwait(false);
     }
 }

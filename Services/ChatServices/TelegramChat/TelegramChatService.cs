@@ -18,7 +18,7 @@ namespace AbsoluteBot.Services.ChatServices.TelegramChat;
 /// </summary>
 public class TelegramChatService(ConfigService configService, TelegramMessageDataProcessor messageDataProcessor,
         TelegramMessageHandler messageHandler,
-        TelegramImageProcessor imageProcessor)
+        TelegramImageProcessor imageProcessor, ChatAchievementService chatAchievementService)
     : IChatService, IMessagePreparationService, IDisposable, ISupportsMessageDeletion,
         IMarkdownMessageService, IDocumentSendingService, IPhotoSendingService, IStickerSendingService, IAsyncInitializable, IChatImageService
 {
@@ -122,8 +122,7 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
             {
                 MessageId = telegramContext.MessageId
             };
-            await botClient.SendMessage(telegramContext.ChannelId, TextProcessingUtils.CutSentence(message, MaxMessageLength),
-                replyParameters: replyParameters).ConfigureAwait(false);
+            await SendTextCoreAsync(botClient, telegramContext.ChannelId, message, replyParameters).ConfigureAwait(false);
         });
     }
 
@@ -165,29 +164,9 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
     /// <param name="message">Текст сообщения с Markdown-разметкой.</param>
     /// <param name="context">Контекст чата, содержащий данные для отправки сообщения.</param>
     /// <returns>Задача, представляющая выполнение операции отправки сообщения.</returns>
-    public async Task SendMarkdownMessageAsync(string message, ChatContext context)
+    public Task SendMarkdownMessageAsync(string message, ChatContext context)
     {
-        if (_botClient != null && !_isDisposed && _isConfigured)
-            try
-            {
-                if (context is not TelegramChatContext telegramContext) return;
-                var replyParameters = new ReplyParameters
-                {
-                    MessageId = telegramContext.MessageId
-                };
-                try
-                {
-                    await _botClient.SendMessage(telegramContext.ChannelId, message, replyParameters: replyParameters, parseMode: ParseMode.Markdown).ConfigureAwait(false);
-                }
-                catch
-                {
-                    await SendMessageAsync(message, context);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Ошибка в методе {MethodName} при выполнении операции с Telegram _botClient.", SendMarkdownMessageAsync);
-            }
+        return SendMessageAsync(message, context);
     }
 
     /// <summary>
@@ -292,7 +271,27 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
         return ExecuteIfServiceIsReady(async botClient =>
         {
             var channelId = Convert.ToInt64(channel);
-            await botClient.SendMessage(channelId, message).ConfigureAwait(false);
+            await SendTextCoreAsync(botClient, channelId, message, null).ConfigureAwait(false);
+        });
+    }
+
+    /// <summary>
+    ///     Отправляет HTML в канал. Если Telegram отклонит разметку — уйдёт обычный текст без тегов.
+    /// </summary>
+    public Task SendHtmlMessageToChannelAsync(string html, string channel)
+    {
+        return ExecuteIfServiceIsReady(async botClient =>
+        {
+            var channelId = Convert.ToInt64(channel);
+            try
+            {
+                await botClient.SendMessage(channelId, html, parseMode: ParseMode.Html).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "HTML-разметка Telegram отклонена, отправка без разметки.");
+                await botClient.SendMessage(channelId, TextProcessingUtils.CleanHtmlTags(html)).ConfigureAwait(false);
+            }
         });
     }
 
@@ -323,7 +322,7 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
         return ExecuteIfServiceIsReady(async botClient =>
         {
             var channelId = Convert.ToInt64(channel);
-            var sentMessage = await botClient.SendMessage(channelId, message).ConfigureAwait(false);
+            var sentMessage = await SendTextCoreAsync(botClient, channelId, message, null).ConfigureAwait(false);
             await botClient.PinChatMessage(channelId, sentMessage.MessageId).ConfigureAwait(false);
         });
     }
@@ -340,6 +339,26 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
             var channelId = Convert.ToInt64(channel);
             await botClient.UnpinChatMessage(channelId).ConfigureAwait(false);
         });
+    }
+
+    private static async Task<Message> SendTextCoreAsync(ITelegramBotClient botClient, long channelId, string message,
+        ReplyParameters? replyParameters)
+    {
+        if (TelegramHtmlFormatter.TryFormat(message, MaxMessageLength, out var html))
+        {
+            try
+            {
+                return await botClient.SendMessage(channelId, html, replyParameters: replyParameters, parseMode: ParseMode.Html)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Разметка Telegram отклонена, отправка без разметки.");
+            }
+        }
+
+        return await botClient.SendMessage(channelId, TextProcessingUtils.CutSentence(message, MaxMessageLength),
+            replyParameters: replyParameters).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -450,12 +469,14 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
         if (parsedMessageResult == null) return;
 
         // Передача сообщения в обработчик сообщений
+        var parsed = parsedMessageResult.Value;
+        _ = chatAchievementService.TryRecordAsync(parsed.context.Username, parsed.text, "Telegram");
+
         var processedMessage =
-            await messageHandler.HandleMessageAsync(parsedMessageResult.Value.text, parsedMessageResult.Value.context, message.EditDate != null)
+            await messageHandler.HandleMessageAsync(parsed.text, parsed.context, message.EditDate != null)
                 .ConfigureAwait(false);
 
-        // Вызов события для дальнейшей обработки
-        MessageReceived?.Invoke(this, new MessageReceivedEventArgs(processedMessage, parsedMessageResult.Value.context));
+        MessageReceived?.Invoke(this, new MessageReceivedEventArgs(processedMessage, parsed.context));
     }
 
     /// <summary>
