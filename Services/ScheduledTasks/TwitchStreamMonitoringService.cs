@@ -26,10 +26,13 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
 {
     private const int VkPlayAllCommandsReminderIntervalHours = 3;
     private const int VkPlayRandomCommandReminderIntervalMinutes = 42;
+    private const int VkPlayHighlightsReminderIntervalMinutes = 128;
     private const string VkPlayReminderMessage = "Хэй молодёжь, блин, привет друзья, напишите !команды, чтоб узнать кто я. А если вдруг скучно, то тегни меня и напиши ты как дела!";
+    private const string VkPlayHighlightsReminderMessage = "А вы знали, что существует канал с хайлайтами со стримов? https://www.youtube.com/@victimcourtHighlights";
     private bool _streamWasOnline;
     private CancellationTokenSource? _vkPlayAllCommandsReminderCancellationTokenSource;
     private CancellationTokenSource? _vkPlayRandomCommandReminderCancellationTokenSource;
+    private CancellationTokenSource? _vkPlayHighlightsReminderCancellationTokenSource;
     private List<string>? _streamLinks = new();
     private string? _lastGameName;
 
@@ -44,6 +47,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
         {
             _ = StartVkPlayAllCommandsReminderAsync().ConfigureAwait(false);
             _ = StartVkPlayRandomCommandReminderAsync().ConfigureAwait(false);
+            _ = StartVkPlayHighlightsReminderAsync().ConfigureAwait(false);
         }
     }
 
@@ -112,9 +116,10 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
         await streamChatterStatsService.BeginNewStreamAsync(streamNumber).ConfigureAwait(false);
         await configService.SetConfigValueAsync("StreamNumber", streamNumber).ConfigureAwait(false);
 
-        // Запуск асинхронных задач для отправки информации о доступных командах
+        // Запуск асинхронных задач для отправки информации о доступных командах и канале хайлайтов
         _ = StartVkPlayAllCommandsReminderAsync().ConfigureAwait(false);
         _ = StartVkPlayRandomCommandReminderAsync().ConfigureAwait(false);
+        _ = StartVkPlayHighlightsReminderAsync().ConfigureAwait(false);
 
         // Уведомление о начале стрима в Telegram и Discord
         if (_streamLinks != null)
@@ -214,12 +219,39 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
+    ///     Запускает повторяющееся отправление напоминания о канале хайлайтов в чат VkPlay с интервалом в 128 минут.
+    /// </summary>
+    private async Task StartVkPlayHighlightsReminderAsync()
+    {
+        _vkPlayHighlightsReminderCancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            while (!_vkPlayHighlightsReminderCancellationTokenSource.Token.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromMinutes(VkPlayHighlightsReminderIntervalMinutes),
+                    _vkPlayHighlightsReminderCancellationTokenSource.Token).ConfigureAwait(false);
+                await vkPlayChatService.SendMessageToChannelAsync(VkPlayHighlightsReminderMessage).ConfigureAwait(false);
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            Log.Information("Отправка сообщений на VkPlay была отменена.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Ошибка при отправке напоминания о хайлайтах на VkPlay.");
+        }
+    }
+
+    /// <summary>
     ///     Останавливает отправление сообщений в VkPlay.
     /// </summary>
     private void StopVkPlayReminder()
     {
         _vkPlayAllCommandsReminderCancellationTokenSource?.Cancel();
         _vkPlayRandomCommandReminderCancellationTokenSource?.Cancel();
+        _vkPlayHighlightsReminderCancellationTokenSource?.Cancel();
     }
 
     /// <summary>
