@@ -85,9 +85,11 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
 
                 var options = new Microsoft.ML.OnnxRuntime.SessionOptions
                 {
-                    GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
+                    GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC,
                     IntraOpNumThreads = 1,
-                    InterOpNumThreads = 1
+                    InterOpNumThreads = 1,
+                    EnableMemoryPattern = false,
+                    EnableCpuMemArena = false
                 };
                 _session = new InferenceSession(onnxPath, options);
                 BindInputNames(_session);
@@ -117,30 +119,39 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
         try
         {
             var premise = _tokenizer.EncodeToIds(text, addBeginningOfSentence: false, addEndOfSentence: false);
-            var batch = catalog.Count;
+            const int batchSize = 4;
+            var selected = new List<string>();
             var seq = XlmrPairEncoder.MaxLength;
-            var ids = new long[batch * seq];
-            var mask = new long[batch * seq];
 
-            for (var i = 0; i < batch; i++)
+            for (var offset = 0; offset < catalog.Count; offset += batchSize)
             {
-                var hypothesisText = "Это сообщение соответствует описанию: " + catalog[i].Criteria;
-                var hypothesis = _tokenizer.EncodeToIds(hypothesisText, addBeginningOfSentence: false, addEndOfSentence: false);
-                XlmrPairEncoder.EncodePair(premise, hypothesis, ids, mask, i * seq);
+                var batch = Math.Min(batchSize, catalog.Count - offset);
+                var slice = catalog.Skip(offset).Take(batch).ToList();
+                var ids = new long[batch * seq];
+                var mask = new long[batch * seq];
+
+                for (var i = 0; i < batch; i++)
+                {
+                    var hypothesisText = "Это сообщение соответствует описанию: " + slice[i].Criteria;
+                    var hypothesis = _tokenizer.EncodeToIds(hypothesisText, addBeginningOfSentence: false, addEndOfSentence: false);
+                    XlmrPairEncoder.EncodePair(premise, hypothesis, ids, mask, i * seq);
+                }
+
+                var idsTensor = new DenseTensor<long>(ids, new[] {batch, seq});
+                var maskTensor = new DenseTensor<long>(mask, new[] {batch, seq});
+                var inputs = new List<NamedOnnxValue>
+                {
+                    NamedOnnxValue.CreateFromTensor(_inputIdsName, idsTensor),
+                    NamedOnnxValue.CreateFromTensor(_attentionMaskName, maskTensor)
+                };
+
+                using var results = _session.Run(inputs);
+                var logits = results[0].AsEnumerable<float>().ToArray();
+                selected.AddRange(NliAchievementScoring.SelectIds(
+                    slice, logits, _classCount, _entailmentIndex, _contradictionIndex));
             }
 
-            var idsTensor = new DenseTensor<long>(ids, new[] {batch, seq});
-            var maskTensor = new DenseTensor<long>(mask, new[] {batch, seq});
-            var inputs = new List<NamedOnnxValue>
-            {
-                NamedOnnxValue.CreateFromTensor(_inputIdsName, idsTensor),
-                NamedOnnxValue.CreateFromTensor(_attentionMaskName, maskTensor)
-            };
-
-            using var results = _session.Run(inputs);
-            var logits = results[0].AsEnumerable<float>().ToArray();
-            return NliAchievementScoring.SelectIds(
-                catalog, logits, _classCount, _entailmentIndex, _contradictionIndex);
+            return selected;
         }
         catch (Exception ex)
         {
