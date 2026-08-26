@@ -7,7 +7,7 @@ namespace AbsoluteBot.Services.NeuralNetworkServices;
 /// </summary>
 public static class NliAchievementScoring
 {
-    public const float DefaultMinEntailment = 0.55f;
+    public const float DefaultMinEntailment = 0.4f;
 
     public static IReadOnlyList<string> SelectIds(
         IReadOnlyList<AchievementDefinition> catalog,

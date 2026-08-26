@@ -30,6 +30,7 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
     private int _classCount = 3;
     private string _inputIdsName = "input_ids";
     private string _attentionMaskName = "attention_mask";
+    private string? _tokenTypeName;
     private bool _ready;
 
     public OnnxNliAchievementClassifier(HttpClient httpClient)
@@ -44,6 +45,10 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
         _ = Task.Run(LoadOrDownloadAsync);
         return Task.CompletedTask;
     }
+
+    internal bool IsReady => _ready;
+
+    internal Task LoadModelAsync() => LoadOrDownloadAsync();
 
     private async Task LoadOrDownloadAsync()
     {
@@ -93,6 +98,7 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
                 };
                 _session = new InferenceSession(onnxPath, options);
                 BindInputNames(_session);
+                CalibrateLabelOrder();
                 _ready = true;
                 Log.Information("NLI-классификатор ачивок готов ({Model}).", OnnxFileName);
             }
@@ -112,15 +118,24 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
 
     public async Task<IReadOnlyList<string>> ClassifyAsync(string text, IReadOnlyList<AchievementDefinition> catalog)
     {
+        var scores = await ScoreAllAsync(text, catalog).ConfigureAwait(false);
+        return scores
+            .Where(item => item.Entailment >= NliAchievementScoring.DefaultMinEntailment && item.Entailment > item.Contradiction)
+            .Select(item => item.Id)
+            .ToList();
+    }
+
+    internal async Task<IReadOnlyList<NliAchievementScore>> ScoreAllAsync(string text, IReadOnlyList<AchievementDefinition> catalog)
+    {
         if (!_ready || _session == null || _tokenizer == null || catalog.Count == 0 || string.IsNullOrWhiteSpace(text))
-            return Array.Empty<string>();
+            return Array.Empty<NliAchievementScore>();
 
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var premise = _tokenizer.EncodeToIds(text, addBeginningOfSentence: false, addEndOfSentence: false);
+            var premise = EncodeText(text);
             const int batchSize = 4;
-            var selected = new List<string>();
+            var scored = new List<NliAchievementScore>(catalog.Count);
             var seq = XlmrPairEncoder.MaxLength;
 
             for (var offset = 0; offset < catalog.Count; offset += batchSize)
@@ -129,39 +144,118 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
                 var slice = catalog.Skip(offset).Take(batch).ToList();
                 var ids = new long[batch * seq];
                 var mask = new long[batch * seq];
+                var types = _tokenTypeName == null ? null : new long[batch * seq];
 
                 for (var i = 0; i < batch; i++)
                 {
-                    var hypothesisText = "Это сообщение соответствует описанию: " + slice[i].Criteria;
-                    var hypothesis = _tokenizer.EncodeToIds(hypothesisText, addBeginningOfSentence: false, addEndOfSentence: false);
+                    var hypothesisText = ToHypothesis(slice[i]);
+                    var hypothesis = EncodeText(hypothesisText);
                     XlmrPairEncoder.EncodePair(premise, hypothesis, ids, mask, i * seq);
                 }
 
-                var idsTensor = new DenseTensor<long>(ids, new[] {batch, seq});
-                var maskTensor = new DenseTensor<long>(mask, new[] {batch, seq});
                 var inputs = new List<NamedOnnxValue>
                 {
-                    NamedOnnxValue.CreateFromTensor(_inputIdsName, idsTensor),
-                    NamedOnnxValue.CreateFromTensor(_attentionMaskName, maskTensor)
+                    NamedOnnxValue.CreateFromTensor(_inputIdsName, new DenseTensor<long>(ids, new[] {batch, seq})),
+                    NamedOnnxValue.CreateFromTensor(_attentionMaskName, new DenseTensor<long>(mask, new[] {batch, seq}))
                 };
+                if (types != null && _tokenTypeName != null)
+                    inputs.Add(NamedOnnxValue.CreateFromTensor(_tokenTypeName, new DenseTensor<long>(types, new[] {batch, seq})));
 
                 using var results = _session.Run(inputs);
                 var logits = results[0].AsEnumerable<float>().ToArray();
-                selected.AddRange(NliAchievementScoring.SelectIds(
-                    slice, logits, _classCount, _entailmentIndex, _contradictionIndex));
+                for (var i = 0; i < batch; i++)
+                {
+                    var probs = NliAchievementScoring.Softmax(logits, i * _classCount, _classCount);
+                    var entailment = _entailmentIndex < probs.Length ? probs[_entailmentIndex] : 0f;
+                    var contradiction = _contradictionIndex < probs.Length ? probs[_contradictionIndex] : 0f;
+                    var neutralIndex = 3 - _entailmentIndex - _contradictionIndex;
+                    var neutral = neutralIndex >= 0 && neutralIndex < probs.Length ? probs[neutralIndex] : 0f;
+                    scored.Add(new NliAchievementScore(slice[i].Id, entailment, neutral, contradiction));
+                }
             }
 
-            return selected;
+            return scored;
         }
         catch (Exception ex)
         {
             Log.Warning(ex, "Ошибка NLI-классификации ачивки.");
-            return Array.Empty<string>();
+            return Array.Empty<NliAchievementScore>();
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    internal static string ToHypothesis(AchievementDefinition item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.NliHypothesis))
+            return item.NliHypothesis.Trim();
+
+        var first = item.Criteria.Split('.')[0].Trim();
+        if (first.EndsWith('.'))
+            first = first[..^1];
+        return "В этом сообщении говорится о " + first + ".";
+    }
+
+    internal IReadOnlyList<int> EncodeText(string text)
+    {
+        if (_tokenizer == null) return Array.Empty<int>();
+        var withPrefix = text.Length > 0 && text[0] != ' ' ? " " + text : text;
+        var sentencePieceIds = _tokenizer.EncodeToIds(withPrefix, addBeginningOfSentence: false, addEndOfSentence: false);
+        return XlmrPairEncoder.ToModelIds(sentencePieceIds);
+    }
+
+    internal (float Entailment, float Contradiction) ScorePair(string premise, string hypothesis)
+    {
+        _gate.Wait();
+        try
+        {
+            return InferPair(premise, hypothesis);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private void CalibrateLabelOrder()
+    {
+        if (_session == null || _tokenizer == null) return;
+
+        var (entailment, contradiction) = InferPair(
+            "John killed Bill.",
+            "Bill is dead.");
+        if (contradiction <= entailment) return;
+
+        (_entailmentIndex, _contradictionIndex) = (_contradictionIndex, _entailmentIndex);
+        Log.Information(
+            "NLI: порядок меток перевёрнут после калибровки (entailment={Entailment}, contradiction={Contradiction}).",
+            _entailmentIndex, _contradictionIndex);
+    }
+
+    private (float Entailment, float Contradiction) InferPair(string premiseText, string hypothesisText)
+    {
+        var seq = XlmrPairEncoder.MaxLength;
+        var premise = EncodeText(premiseText);
+        var hypothesis = EncodeText(hypothesisText);
+        var ids = new long[seq];
+        var mask = new long[seq];
+        XlmrPairEncoder.EncodePair(premise, hypothesis, ids, mask, 0);
+        var inputs = new List<NamedOnnxValue>
+        {
+            NamedOnnxValue.CreateFromTensor(_inputIdsName, new DenseTensor<long>(ids, new[] {1, seq})),
+            NamedOnnxValue.CreateFromTensor(_attentionMaskName, new DenseTensor<long>(mask, new[] {1, seq}))
+        };
+        if (_tokenTypeName != null)
+            inputs.Add(NamedOnnxValue.CreateFromTensor(_tokenTypeName, new DenseTensor<long>(new long[seq], new[] {1, seq})));
+
+        using var results = _session!.Run(inputs);
+        var logits = results[0].AsEnumerable<float>().ToArray();
+        var probs = NliAchievementScoring.Softmax(logits, 0, _classCount);
+        var entailment = _entailmentIndex < probs.Length ? probs[_entailmentIndex] : 0f;
+        var contradiction = _contradictionIndex < probs.Length ? probs[_contradictionIndex] : 0f;
+        return (entailment, contradiction);
     }
 
     public void Dispose()
@@ -205,9 +299,15 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
         {
             if (name.Contains("mask", StringComparison.OrdinalIgnoreCase))
                 _attentionMaskName = name;
+            else if (name.Contains("type", StringComparison.OrdinalIgnoreCase))
+                _tokenTypeName = name;
             else if (name.Contains("id", StringComparison.OrdinalIgnoreCase))
                 _inputIdsName = name;
         }
+
+        Log.Information(
+            "NLI входы: ids={Ids} mask={Mask} type={Type}; labels entailment={Entailment} contradiction={Contradiction}",
+            _inputIdsName, _attentionMaskName, _tokenTypeName ?? "-", _entailmentIndex, _contradictionIndex);
     }
 
     internal static string DescribeNativeLoadEnvironment()
@@ -249,3 +349,5 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
         }
     }
 }
+
+internal readonly record struct NliAchievementScore(string Id, float Entailment, float Neutral, float Contradiction);

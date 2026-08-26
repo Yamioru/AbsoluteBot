@@ -17,6 +17,10 @@ public class AchievementDefinition
     public required string Name { get; set; }
     public int Goal { get; set; }
     public required string Criteria { get; set; }
+    /// <summary>
+    ///     Короткая NLI-гипотеза (zero-shot: «This example is about …»). Если пусто — первое предложение Criteria.
+    /// </summary>
+    public string? NliHypothesis { get; set; }
 }
 
 /// <summary>

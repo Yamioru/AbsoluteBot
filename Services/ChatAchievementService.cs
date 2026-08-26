@@ -128,8 +128,7 @@ public class ChatAchievementService : IAsyncInitializable
             _gate.Release();
         }
 
-        var nliIds = await _classifier.ClassifyAsync(text, catalog).ConfigureAwait(false);
-        var ids = MergeIds(KeywordAchievementMatcher.Match(text, catalog), nliIds);
+        var ids = await _classifier.ClassifyAsync(text, catalog).ConfigureAwait(false);
         if (ids.Count == 0) return;
 
         Log.Information("Ачивки {Nickname}: {Ids} ({Text})", nickname, string.Join(",", ids), Truncate(text));
@@ -276,19 +275,6 @@ public class ChatAchievementService : IAsyncInitializable
         }
 
         return _users.GetOrAdd(nickname, key => new AchievementUserProgress {Nickname = key});
-    }
-
-    private static IReadOnlyList<string> MergeIds(IReadOnlyList<string> keywords, IReadOnlyList<string> nli)
-    {
-        var merged = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in keywords.Concat(nli))
-        {
-            if (string.IsNullOrWhiteSpace(id) || !seen.Add(id)) continue;
-            merged.Add(id);
-        }
-
-        return merged;
     }
 
     private static string Truncate(string text)
