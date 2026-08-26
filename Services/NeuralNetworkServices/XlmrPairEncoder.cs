@@ -75,4 +75,39 @@ public static class XlmrPairEncoder
             index++;
         }
     }
+
+    /// <summary>
+    ///     Одно предложение: [CLS] tokens [SEP] + pad. Нужно для e5 / MiniLM эмбеддингов.
+    /// </summary>
+    public static void EncodeSingle(
+        IReadOnlyList<int> tokens,
+        long[] ids,
+        long[] mask,
+        int offset,
+        int maxLength = MaxLength)
+    {
+        var budget = Math.Max(1, maxLength - 2);
+        var take = Math.Min(tokens.Count, budget);
+        var index = offset;
+        ids[index] = BosId;
+        mask[index] = 1;
+        index++;
+
+        for (var i = 0; i < take; i++, index++)
+        {
+            ids[index] = tokens[i];
+            mask[index] = 1;
+        }
+
+        ids[index] = EosId;
+        mask[index] = 1;
+        index++;
+
+        while (index < offset + maxLength)
+        {
+            ids[index] = PadId;
+            mask[index] = 0;
+            index++;
+        }
+    }
 }

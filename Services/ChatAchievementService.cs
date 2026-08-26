@@ -10,7 +10,7 @@ using Serilog;
 namespace AbsoluteBot.Services;
 
 /// <summary>
-///     Тихий учёт ачивок по сообщениям Twitch и VK Live: классификация нейросетью, прогресс только в JSON.
+///     Тихий учёт ачивок по сообщениям Twitch и VK Live: классификация эмбеддингами, прогресс только в JSON.
 /// </summary>
 public class ChatAchievementService : IAsyncInitializable
 {

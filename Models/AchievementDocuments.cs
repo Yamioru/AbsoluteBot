@@ -18,9 +18,14 @@ public class AchievementDefinition
     public int Goal { get; set; }
     public required string Criteria { get; set; }
     /// <summary>
-    ///     Короткая NLI-гипотеза (zero-shot: «This example is about …»). Если пусто — первое предложение Criteria.
+    ///     Подпись для эмбеддинга (тема ачивки). Если пусто — первое предложение Criteria.
     /// </summary>
     public string? NliHypothesis { get; set; }
+
+    /// <summary>
+    ///     Негатив по той же теме. Если ближе к сообщению, чем <see cref="NliHypothesis"/>, ачивка не засчитывается.
+    /// </summary>
+    public string? NegativeHypothesis { get; set; }
 }
 
 /// <summary>
