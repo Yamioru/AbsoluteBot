@@ -11,9 +11,15 @@ namespace AbsoluteBot.Services;
 
 /// <summary>
 ///     Тихий учёт ачивок по сообщениям Twitch и VK Live: классификация эмбеддингами, прогресс только в JSON.
+///     Сейчас выключено: <see cref="Enabled"/> = false — при старте бота не грузим модель и не пишем прогресс.
 /// </summary>
 public class ChatAchievementService : IAsyncInitializable
 {
+    /// <summary>
+    ///     Временно выключено. true — снова грузить каталог, e5-модель и считать сообщения.
+    ///     Тесты включают это сами.
+    /// </summary>
+    public static bool Enabled { get; set; } = false;
     private const int LastMatchMaxLength = 200;
     private const string CatalogFileName = "achievements.json";
     private const string ProgressDirectoryName = "achievements";
@@ -61,6 +67,12 @@ public class ChatAchievementService : IAsyncInitializable
 
     public async Task InitializeAsync()
     {
+        if (!Enabled)
+        {
+            Log.Information("Ачивки выключены (ChatAchievementService.Enabled=false): каталог и модель не загружаются.");
+            return;
+        }
+
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -83,6 +95,7 @@ public class ChatAchievementService : IAsyncInitializable
     {
         try
         {
+            if (!Enabled) return;
             await RecordCoreAsync(nickname, text, platform, userId).ConfigureAwait(false);
         }
         catch (Exception ex)

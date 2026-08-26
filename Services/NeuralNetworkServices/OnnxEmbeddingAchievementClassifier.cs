@@ -1,4 +1,5 @@
 using AbsoluteBot.Models;
+using AbsoluteBot.Services;
 using AbsoluteBot.Services.UtilityServices;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
@@ -47,6 +48,9 @@ public class OnnxEmbeddingAchievementClassifier : IAchievementClassifier, IAsync
 
     public Task InitializeAsync()
     {
+        if (!ChatAchievementService.Enabled)
+            return Task.CompletedTask;
+
         _ = Task.Run(LoadOrDownloadAsync);
         return Task.CompletedTask;
     }
