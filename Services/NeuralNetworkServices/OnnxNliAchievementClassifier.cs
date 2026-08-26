@@ -75,6 +75,14 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
                 await using (var stream = File.OpenRead(spPath))
                     _tokenizer = SentencePieceTokenizer.Create(stream, addBeginningOfSentence: false, addEndOfSentence: false);
 
+                if (!HasGlibcLoader())
+                {
+                    Log.Error(
+                        "NLI ачивок недоступен: нет glibc (ld-linux-x86-64.so.2). Сейчас, скорее всего, Alpine. Нужен Debian-образ (Dockerfile bookworm-slim) и пересборка: !обновить. {Env}",
+                        DescribeNativeLoadEnvironment());
+                    return;
+                }
+
                 var options = new Microsoft.ML.OnnxRuntime.SessionOptions
                 {
                     GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
@@ -93,7 +101,9 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Не удалось инициализировать NLI-классификатор ачивок.");
+            Log.Error(ex,
+                "Не удалось инициализировать NLI-классификатор ачивок. {Env}. Если в тексте ошибки ld-linux-x86-64.so.2 — контейнер Alpine, а ONNX linux-x64 нужен Debian. Пересоберите образ (!обновить).",
+                DescribeNativeLoadEnvironment());
             _ready = false;
         }
     }
@@ -101,7 +111,7 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
     public async Task<IReadOnlyList<string>> ClassifyAsync(string text, IReadOnlyList<AchievementDefinition> catalog)
     {
         if (!_ready || _session == null || _tokenizer == null || catalog.Count == 0 || string.IsNullOrWhiteSpace(text))
-            return [];
+            return Array.Empty<string>();
 
         await _gate.WaitAsync().ConfigureAwait(false);
         try
@@ -119,8 +129,8 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
                 XlmrPairEncoder.EncodePair(premise, hypothesis, ids, mask, i * seq);
             }
 
-            var idsTensor = new DenseTensor<long>(ids, [batch, seq]);
-            var maskTensor = new DenseTensor<long>(mask, [batch, seq]);
+            var idsTensor = new DenseTensor<long>(ids, new[] {batch, seq});
+            var maskTensor = new DenseTensor<long>(mask, new[] {batch, seq});
             var inputs = new List<NamedOnnxValue>
             {
                 NamedOnnxValue.CreateFromTensor(_inputIdsName, idsTensor),
@@ -135,7 +145,7 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
         catch (Exception ex)
         {
             Log.Warning(ex, "Ошибка NLI-классификации ачивки.");
-            return [];
+            return Array.Empty<string>();
         }
         finally
         {
@@ -187,6 +197,20 @@ public class OnnxNliAchievementClassifier : IAchievementClassifier, IAsyncInitia
             else if (name.Contains("id", StringComparison.OrdinalIgnoreCase))
                 _inputIdsName = name;
         }
+    }
+
+    internal static string DescribeNativeLoadEnvironment()
+    {
+        var os = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+        var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
+        return $"OS={os}; RID={rid}; glibcLoader={HasGlibcLoader()}";
+    }
+
+    internal static bool HasGlibcLoader()
+    {
+        return File.Exists("/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2")
+               || File.Exists("/lib64/ld-linux-x86-64.so.2")
+               || OperatingSystem.IsWindows();
     }
 
     private async Task EnsureFileAsync(string destination, string repo, string relativePath)

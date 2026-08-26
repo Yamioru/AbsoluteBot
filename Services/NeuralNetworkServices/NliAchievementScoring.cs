@@ -18,7 +18,7 @@ public static class NliAchievementScoring
         float minEntailment = DefaultMinEntailment)
     {
         if (catalog.Count == 0 || logits.Length < catalog.Count * classCount || classCount < 2)
-            return [];
+            return Array.Empty<string>();
 
         var selected = new List<string>();
         for (var i = 0; i < catalog.Count; i++)

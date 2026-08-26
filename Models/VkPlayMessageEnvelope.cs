@@ -62,6 +62,19 @@ public class VkPlayMessage
 public class VkPlayUser
 {
     [JsonPropertyName("name")] public string? UserName { get; set; }
+    [JsonPropertyName("nick")] public string? Nick { get; set; }
+    [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
+
+    public string? ResolveDisplayName() =>
+        FirstNonEmpty(UserName, Nick, DisplayName);
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        return null;
+    }
 }
 
 /// <summary>

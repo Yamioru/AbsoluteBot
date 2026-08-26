@@ -41,10 +41,26 @@ public class VkPlayConnectionManager(WebSocketConnectionManager webSocketManager
                         continue;
                     }
 
-                    await webSocketManager.SendMessageAsync("{\"connect\":{\"token\":\"" + readToken + "\",\"name\":\"js\"},\"id\":1}")
+                    if (string.IsNullOrEmpty(_channelId))
+                    {
+                        Log.Warning("VK Live: VkPlayChannelId пуст, подписка на чат пропущена.");
+                        await webSocketManager.DisconnectAsync().ConfigureAwait(false);
+                        await Task.Delay(ReconnectDelayMilliseconds).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    var channelId = _channelId;
+                    await webSocketManager.SendMessageAsync(VkPlayCentrifugoProtocol.ConnectPayload(readToken))
                         .ConfigureAwait(false);
-                    await webSocketManager.SendMessageAsync("{\"subscribe\":{\"channel\":\"channel-chat:" + _channelId + "\"},\"id\":2}")
-                        .ConfigureAwait(false);
+                    Log.Information("VK Live: отправлен Centrifugo connect, channelId={ChannelId}.", channelId);
+
+                    foreach (var (id, channel) in VkPlayCentrifugoProtocol.ChatSubscriptions(channelId))
+                    {
+                        await webSocketManager.SendMessageAsync(VkPlayCentrifugoProtocol.SubscribePayload(id, channel))
+                            .ConfigureAwait(false);
+                        Log.Information("VK Live: подписка id={Id} на {Channel}.", id, channel);
+                    }
+
                     OnReconnectSuccess?.Invoke(this, EventArgs.Empty);
                 }
 

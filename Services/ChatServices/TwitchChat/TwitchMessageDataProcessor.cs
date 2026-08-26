@@ -37,10 +37,10 @@ public partial class TwitchMessageDataProcessor(ConfigService configService) : I
     {
         context = null;
         messageText = null;
-        if (IsOwnBotMessage(chatMessage.Username) || IsOwnBotMessage(chatMessage.DisplayName)) return false;
-
+        var isOwn = IsOwnBotMessage(chatMessage.Username) || IsOwnBotMessage(chatMessage.DisplayName);
         messageText = GetMessageText(chatMessage);
         if (string.IsNullOrEmpty(messageText)) return false;
+        if (isOwn && !messageText.TrimStart().StartsWith('!')) return false;
 
         // Извлечение информации о сообщении-ответе (если есть)
         var replyInfo = GetReplyInfoFromMessage(chatMessage);

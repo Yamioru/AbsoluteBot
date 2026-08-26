@@ -7,37 +7,45 @@ namespace AbsoluteBot.Services.UtilityServices;
 /// <summary>
 ///     Управляет подключениями WebSocket, обеспечивая возможность отправки и получения сообщений.
 /// </summary>
-public class WebSocketConnectionManager
+public class WebSocketConnectionManager : IDisposable
 {
     private const int BufferSize = 1024 * 8;
-    private readonly ClientWebSocket _webSocket = new();
+    private ClientWebSocket _webSocket = new();
+    private bool _disposed;
+
     public bool IsConnected => _webSocket.State == WebSocketState.Open;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _webSocket.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     /// <summary>
     ///     Подключает WebSocket к указанному URI с заданным заголовком Origin.
+    ///     После закрытия создаётся новый <see cref="ClientWebSocket" /> — экземпляр нельзя переиспользовать.
     /// </summary>
-    /// <param name="uri">URI для подключения.</param>
-    /// <param name="origin">Дополнительный заголовок Origin.</param>
-    /// <returns>Асинхронная задача.</returns>
     public async Task ConnectAsync(Uri uri, string origin = "")
     {
-        if (_webSocket.State == WebSocketState.Open) await DisconnectAsync().ConfigureAwait(false);
-
-        _webSocket.Options.AddSubProtocol("websocket");
+        await DisconnectAsync().ConfigureAwait(false);
+        _webSocket.Dispose();
+        _webSocket = new ClientWebSocket();
         if (!string.IsNullOrEmpty(origin)) _webSocket.Options.SetRequestHeader("Origin", origin);
         await _webSocket.ConnectAsync(uri, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>
-    ///     Отключает WebSocket, если он подключен.
+    ///     Отключает соединение с сервером, если оно открыто.
     /// </summary>
-    /// <returns>Асинхронная задача.</returns>
     public async Task DisconnectAsync()
     {
         try
         {
             if (_webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
-                await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None).ConfigureAwait(false);
+                await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None)
+                    .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -48,7 +56,6 @@ public class WebSocketConnectionManager
     /// <summary>
     ///     Асинхронно получает сообщение от WebSocket.
     /// </summary>
-    /// <returns>Полученное сообщение в виде строки.</returns>
     public async Task<string> ReceiveMessageAsync()
     {
         var buffer = new byte[BufferSize];
@@ -57,9 +64,16 @@ public class WebSocketConnectionManager
 
         do
         {
-            result = await _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None).ConfigureAwait(false);
+            result = await _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None)
+                .ConfigureAwait(false);
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                await DisconnectAsync().ConfigureAwait(false);
+                return string.Empty;
+            }
+
             stringBuilder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-        } while (!result.EndOfMessage); // Чтение до конца сообщения
+        } while (!result.EndOfMessage);
 
         return stringBuilder.ToString();
     }
@@ -67,11 +81,10 @@ public class WebSocketConnectionManager
     /// <summary>
     ///     Асинхронно отправляет сообщение через WebSocket.
     /// </summary>
-    /// <param name="message">Сообщение для отправки.</param>
-    /// <returns>Асинхронная задача.</returns>
     public async Task SendMessageAsync(string message)
     {
         var buffer = Encoding.UTF8.GetBytes(message);
-        await _webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
+        await _webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None)
+            .ConfigureAwait(false);
     }
 }

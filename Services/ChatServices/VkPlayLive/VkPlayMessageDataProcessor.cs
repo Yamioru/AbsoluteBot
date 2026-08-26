@@ -41,12 +41,14 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
         text = null;
         context = null;
 
-        if (!TryParseMessage(rawMessage, out var messageData, out var username) || _vkPlayBotName == null ||
-            string.Equals(_vkPlayBotName, username, StringComparison.InvariantCultureIgnoreCase)) return false;
+        if (!TryParseMessage(rawMessage, out var messageData, out var username))
+            return false;
 
-        // Извлечение текста сообщения
         text = GetJoinedTextFromMessageData(messageData);
         if (string.IsNullOrEmpty(text)) return false;
+
+        if (IsOwnBotUsername(username) && !IsOwnCommandAllowed(text))
+            return false;
 
         // Извлечение Id сообщения
         var messageId = messageData.MessageId;
@@ -168,7 +170,7 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
     private ReplyInfo? GetReplyInfoFromMessageData(VkPlayMessage messageData)
     {
         var parentText = ReplaceBotName(JoinParentMessageText(messageData));
-        var parentUsername = ReplaceBotName(messageData.ParentMessage?.ParentAuthor?.UserName);
+        var parentUsername = ReplaceBotName(messageData.ParentMessage?.ParentAuthor?.ResolveDisplayName());
 
         if (string.IsNullOrEmpty(parentUsername) || string.IsNullOrWhiteSpace(parentText)) return null;
         return new ReplyInfo(parentUsername, parentText);
@@ -263,8 +265,27 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
         [NotNullWhen(true)] out string? username)
     {
         messageData = ParseVkPlayMessage(rawMessage);
-        username = messageData?.Author?.UserName;
+        username = messageData?.Author?.ResolveDisplayName();
 
         return messageData != null && !string.IsNullOrEmpty(username);
+    }
+
+    internal bool IsOwnBotUsername(string? username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return false;
+        return (!string.IsNullOrEmpty(_vkPlayBotName) &&
+                username.Equals(_vkPlayBotName, StringComparison.InvariantCultureIgnoreCase)) ||
+               (!string.IsNullOrEmpty(_commonBotName) &&
+                username.Equals(_commonBotName, StringComparison.InvariantCultureIgnoreCase));
+    }
+
+    /// <summary>
+    ///     Временно разрешает собственные сообщения бота, если это команда (<c>!</c>),
+    ///     чтобы можно было отвечать на свои же команды. Репосты <c>[Twitch]</c> не пропускаются.
+    /// </summary>
+    internal static bool IsOwnCommandAllowed(string text)
+    {
+        var trimmed = text.TrimStart();
+        return trimmed.StartsWith('!') && !trimmed.StartsWith("[Twitch]", StringComparison.OrdinalIgnoreCase);
     }
 }

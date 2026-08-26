@@ -22,6 +22,7 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
     private bool _isDisposed;
     private VkPlayConnectionManager? _connectionManager;
     private VkPlayMessageReceiver? _messageReceiver;
+    private WebSocketConnectionManager? _webSocketManager;
 
     /// <summary>
     ///     Освобождает ресурсы и завершает работу с VkPlayChatService.
@@ -30,7 +31,9 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        await _connectionManager!.DisconnectAsync().ConfigureAwait(false);
+        if (_connectionManager != null)
+            await _connectionManager.DisconnectAsync().ConfigureAwait(false);
+        _webSocketManager?.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -41,10 +44,10 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
     {
         try
         {
-            var webSocketManager = new WebSocketConnectionManager();
-            _connectionManager = CreateConnectionManager(configService, webSocketManager, authService);
+            _webSocketManager = new WebSocketConnectionManager();
+            _connectionManager = CreateConnectionManager(configService, _webSocketManager, authService);
             if (!await _connectionManager.InitializeAsync().ConfigureAwait(false)) return;
-            _messageReceiver = CreateMessageReceiver(webSocketManager, _connectionManager);
+            _messageReceiver = CreateMessageReceiver(_webSocketManager, _connectionManager);
             _messageReceiver.OnMessageReceived += async (_, message) => await ProcessReceivedMessageAsync(message).ConfigureAwait(false);
             _isConfigured = true;
         }
@@ -72,7 +75,8 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
         {
             await _connectionManager!.ConnectAsync().ConfigureAwait(false);
             _messageReceiver!.StartReceivingMessages();
-            Log.ForContext("ConnectionEvent", true).Information("Подключение к VkPlay произошло успешно.");
+            Log.ForContext("ConnectionEvent", true)
+                .Information("Подключение к VkPlay произошло успешно. Чат: public-chat и channel-chat.");
         });
     }
 
@@ -180,16 +184,28 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
             // Проверка на валидность и обработка полученного сообщения
             if (messageProcessor.TryParseValidMessage(message, this, out var messageText, out var context))
             {
+                Log.Information("VK Live входящее от {Username}: {Text}", context.Username, TruncateForLog(messageText));
                 await streamChatterStatsService.RecordMessageAsync(context.Username).ConfigureAwait(false);
                 _ = chatAchievementService.TryRecordAsync(context.Username, messageText, "VkPlayLive");
-                // Обработка сообщения с учетом упоминаний и цензуры
                 var processedMessage = await messageHandler.HandleMessageAsync(messageText, context).ConfigureAwait(false);
                 MessageReceived?.Invoke(this, new MessageReceivedEventArgs(processedMessage, context));
+            }
+            else
+            {
+                var frame = VkPlayCentrifugoProtocol.DescribeFrame(message);
+                if (frame.Kind is "push" or "other" or "invalid-json")
+                    Log.Information("VK Live кадр не разобран как чат ({Kind}): {Detail}", frame.Kind, frame.Detail);
             }
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Ошибка при  обработке полученного сообщения на VkPlayLive.");
         }
+    }
+
+    private static string TruncateForLog(string? text, int max = 180)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= max) return text ?? string.Empty;
+        return text[..max];
     }
 }
