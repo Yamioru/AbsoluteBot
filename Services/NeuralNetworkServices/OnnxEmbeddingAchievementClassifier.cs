@@ -22,6 +22,12 @@ public class OnnxEmbeddingAchievementClassifier : IAchievementClassifier, IAsync
 
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private static readonly string[] DecoyPassages =
+    [
+        "обычное короткое сообщение в чате: привет, ок, лол, ага",
+        "оскорбление человека по имени: ты чёрт, дурак, идиот, паша ты чёрт",
+        "обращение к человеку без темы разговора"
+    ];
     private readonly Dictionary<string, float[]> _labelCache = new(StringComparer.Ordinal);
     private InferenceSession? _session;
     private SentencePieceTokenizer? _tokenizer;
@@ -115,13 +121,18 @@ public class OnnxEmbeddingAchievementClassifier : IAchievementClassifier, IAsync
     public async Task<IReadOnlyList<string>> ClassifyAsync(string text, IReadOnlyList<AchievementDefinition> catalog)
     {
         var scores = await ScoreAllAsync(text, catalog).ConfigureAwait(false);
-        return EmbeddingAchievementScoring.SelectIds(scores);
+        var mentioned = scores.Scores
+            .Where(item => catalog.Any(definition =>
+                string.Equals(definition.Id, item.Id, StringComparison.OrdinalIgnoreCase)
+                && EmbeddingAchievementScoring.MentionsLabel(text, EmbeddingAchievementScoring.ToLabel(definition))))
+            .ToList();
+        return EmbeddingAchievementScoring.SelectIds(mentioned, scores.MaxDecoy, meanGap: 0f, secondGap: 0.02f);
     }
 
-    internal async Task<IReadOnlyList<AchievementScore>> ScoreAllAsync(string text, IReadOnlyList<AchievementDefinition> catalog)
+    internal async Task<AchievementScoreBatch> ScoreAllAsync(string text, IReadOnlyList<AchievementDefinition> catalog)
     {
         if (!_ready || _session == null || _tokenizer == null || catalog.Count == 0 || string.IsNullOrWhiteSpace(text))
-            return Array.Empty<AchievementScore>();
+            return new AchievementScoreBatch([], 0f);
 
         await _gate.WaitAsync().ConfigureAwait(false);
         try
@@ -143,12 +154,19 @@ public class OnnxEmbeddingAchievementClassifier : IAchievementClassifier, IAsync
                 scored.Add(new AchievementScore(item.Id, cosine, negative));
             }
 
-            return scored;
+            var maxDecoy = 0f;
+            foreach (var decoy in DecoyPassages)
+            {
+                var vector = EmbedCached(EmbeddingAchievementScoring.ToPassage(decoy));
+                maxDecoy = Math.Max(maxDecoy, EmbeddingAchievementScoring.Cosine(query, vector));
+            }
+
+            return new AchievementScoreBatch(scored, maxDecoy);
         }
         catch (Exception ex)
         {
             Log.Warning(ex, "Ошибка эмбеддинг-классификации ачивки.");
-            return Array.Empty<AchievementScore>();
+            return new AchievementScoreBatch([], 0f);
         }
         finally
         {
