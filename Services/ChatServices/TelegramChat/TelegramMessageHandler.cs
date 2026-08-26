@@ -38,7 +38,7 @@ public class TelegramMessageHandler(MessageProcessingService messageProcessingSe
             SaveLastMessage(context.Username, handledMessage);
 
         // Обрабатывается сообщение через MessageProcessingService (исправление раскладки, перевод)
-        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage).ConfigureAwait(false);
+        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId).ConfigureAwait(false);
         if (!string.IsNullOrEmpty(processedMessage))
             await context.ChatService.SendMessageAsync($"{context.Username}: {processedMessage}", context).ConfigureAwait(false);
         else

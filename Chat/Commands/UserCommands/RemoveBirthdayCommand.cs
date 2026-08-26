@@ -21,7 +21,8 @@ public class RemoveBirthdayCommand(BirthdayService birthdayService) : BaseComman
 
     protected override async Task<string> ExecuteLogicAsync(ParsedCommand command)
     {
-        return await birthdayService.DisableBirthdayNotificationForPlatformAsync(command.Context.Username, command.Context.Platform)
+        return await birthdayService.DisableBirthdayNotificationForPlatformAsync(command.Context.Username, command.Context.Platform,
+            command.Context.UserId)
             .ConfigureAwait(false)
             ? $"Уведомления о дне рождения на платформе {command.Context.Platform} отключены."
             : "Не удалось отключить уведомления о вашем дне рождения.";

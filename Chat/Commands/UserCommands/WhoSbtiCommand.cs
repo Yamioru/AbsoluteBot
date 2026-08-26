@@ -25,7 +25,7 @@ public class WhoSbtiCommand(SbtiService sbtiService, ConfigService configService
         var parameters = command.Parameters;
         var gameName = await configService.GetConfigValueAsync<string>("LastGameName").ConfigureAwait(false);
         var username = command.Context.Username;
-        var userSbti = sbtiService.GetSbtiForUser(username);
+        var userSbti = sbtiService.GetSbtiForUser(username, command.Context.Platform, command.Context.UserId);
 
         var targetGame = gameName;
         var targetUser = username;

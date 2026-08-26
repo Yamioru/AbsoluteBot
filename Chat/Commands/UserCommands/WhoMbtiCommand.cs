@@ -32,7 +32,7 @@ public class WhoMbtiCommand(MbtiService mbtiService, ConfigService configService
         var parameters = command.Parameters;
         var gameName = await configService.GetConfigValueAsync<string>("LastGameName").ConfigureAwait(false);
         var username = command.Context.Username;
-        var userMbti = mbtiService.GetMbtiForUser(username);
+        var userMbti = mbtiService.GetMbtiForUser(username, command.Context.Platform, command.Context.UserId);
 
         var targetGame = gameName;
         var targetUser = username;

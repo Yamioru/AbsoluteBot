@@ -13,7 +13,10 @@ public class MessageProcessingService(LayoutCorrectionService layoutCorrectionSe
     /// <param name="username">Имя пользователя, отправившего сообщение.</param>
     /// <param name="text">Текст сообщения.</param>
     /// <returns>Возвращает исправленный или переведенный текст сообщения или null, если текст не изменился.</returns>
-    public async Task<string?> ProcessMessageAsync(string username, string text)
+    public Task<string?> ProcessMessageAsync(string username, string text) =>
+        ProcessMessageAsync(username, text, null, null);
+
+    public async Task<string?> ProcessMessageAsync(string username, string text, string? platform, string? userId)
     {
         // Исправление раскладки
         var correctedText = layoutCorrectionService.CorrectLayoutIfNeeded(text);
@@ -22,7 +25,7 @@ public class MessageProcessingService(LayoutCorrectionService layoutCorrectionSe
         if (correctedText != text) return correctedText;
 
         // Проверка необходимости перевода сообщения
-        var translatedText = await autoTranslateService.TranslateUserMessageAsync(username, text).ConfigureAwait(false);
+        var translatedText = await autoTranslateService.TranslateUserMessageAsync(username, text, platform, userId).ConfigureAwait(false);
         if (translatedText == null || translatedText == text) return null;
         return translatedText;
     }

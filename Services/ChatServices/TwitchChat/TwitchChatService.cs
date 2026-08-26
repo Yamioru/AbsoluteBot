@@ -242,8 +242,8 @@ public class TwitchChatService(ConfigService configService, UrlShortenerService 
         {
             if (!_messageIdDeduplicator.TryTake(e.ChatMessage.Id)) return;
             if (!messageDataProcessor.TryParseValidMessage(e.ChatMessage, this, out var messageText, out var context)) return;
-            await streamChatterStatsService.RecordMessageAsync(context.DisplayedName).ConfigureAwait(false);
-            _ = chatAchievementService.TryRecordAsync(context.DisplayedName, messageText, "Twitch");
+            await streamChatterStatsService.RecordMessageAsync(context.DisplayedName, context.Platform, context.UserId).ConfigureAwait(false);
+            _ = chatAchievementService.TryRecordAsync(context.DisplayedName, messageText, "Twitch", context.UserId);
             var processedMessage = await messageHandler.HandleMessageAsync(messageText, context).ConfigureAwait(false);
             // Вызов события для дальнейшей обработки
             MessageReceived?.Invoke(this, new MessageReceivedEventArgs(processedMessage, context));

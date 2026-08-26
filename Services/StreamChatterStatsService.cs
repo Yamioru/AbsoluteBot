@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using AbsoluteBot.Models;
+using AbsoluteBot.Services.UserManagementServices;
 using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
@@ -11,8 +12,20 @@ namespace AbsoluteBot.Services;
 ///     Считает сообщения чаттеров за сессию стрима (Twitch + VkPlayLive).
 ///     Сессия привязана к <c>StreamNumber</c>: продолжается после окончания Twitch, пока не начнётся следующий стрим.
 /// </summary>
-public class StreamChatterStatsService(ConfigService configService) : IAsyncInitializable
+public class StreamChatterStatsService : IAsyncInitializable
 {
+    private readonly ConfigService configService;
+    private readonly UserIdentityService? userIdentityService;
+
+    public StreamChatterStatsService(ConfigService configService) : this(configService, null)
+    {
+    }
+
+    public StreamChatterStatsService(ConfigService configService, UserIdentityService? userIdentityService)
+    {
+        this.configService = configService;
+        this.userIdentityService = userIdentityService;
+    }
     private const string StatsDirectoryName = "stream_stats";
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
@@ -73,21 +86,53 @@ public class StreamChatterStatsService(ConfigService configService) : IAsyncInit
     ///     Учитывает одно сообщение чаттера в текущей сессии стрима и сохраняет файл.
     /// </summary>
     /// <param name="nickname">Никнейм чаттера (Twitch DisplayName или VK Username).</param>
-    public async Task RecordMessageAsync(string? nickname)
+    /// <param name="platform">Платформа сообщения.</param>
+    /// <param name="userId">Id пользователя на платформе.</param>
+    public Task RecordMessageAsync(string? nickname) =>
+        RecordMessageAsync(nickname, null, null);
+
+    public async Task RecordMessageAsync(string? nickname, string? platform, string? userId)
     {
         if (string.IsNullOrWhiteSpace(nickname)) return;
+
+        IReadOnlyList<string> aliases = new[] {nickname};
+        if (userIdentityService != null)
+            aliases = await userIdentityService.RememberAsync(nickname, platform, userId).ConfigureAwait(false);
 
         await Semaphore.WaitAsync().ConfigureAwait(false);
         try
         {
-            _counts.AddOrUpdate(
-                nickname,
-                key => new StreamChatterCount {Nickname = key, Count = 1},
-                (_, existing) =>
+            StreamChatterCount? existing = null;
+            foreach (var alias in aliases)
+            {
+                if (string.IsNullOrWhiteSpace(alias)) continue;
+                if (!_counts.TryGetValue(alias, out existing)) continue;
+                break;
+            }
+
+            if (existing != null)
+            {
+                existing.Count++;
+                if (!existing.Nickname.Equals(nickname, StringComparison.OrdinalIgnoreCase))
                 {
-                    existing.Count++;
-                    return existing;
-                });
+                    var oldKey = existing.Nickname;
+                    existing.Nickname = nickname;
+                    _counts.TryRemove(oldKey, out _);
+                    _counts[nickname] = existing;
+                }
+            }
+            else
+            {
+                _counts.AddOrUpdate(
+                    nickname,
+                    key => new StreamChatterCount {Nickname = key, Count = 1},
+                    (_, current) =>
+                    {
+                        current.Count++;
+                        return current;
+                    });
+            }
+
             await SaveUnlockedAsync().ConfigureAwait(false);
         }
         catch (Exception ex)

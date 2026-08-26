@@ -385,6 +385,8 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection RegisterUserManagementServices(this IServiceCollection services)
     {
         return services
+            .AddSingleton<UserIdentityService>()
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<UserIdentityService>())
             .AddSingleton<BirthdayService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<BirthdayService>())
             .AddSingleton<MbtiService>()

@@ -74,6 +74,7 @@ public class TelegramMessageDataProcessor(TelegramChannelManager telegramChannel
             null,
             replyInfo
         );
+        context.UserId = message.From.Id.ToString();
 
         return (cleanedText, context);
     }

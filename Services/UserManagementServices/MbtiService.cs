@@ -11,8 +11,24 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// <summary>
 /// Сервис для работы с MBTI типами пользователей и получения данных о персонажах по MBTI.
 /// </summary>
-public partial class MbtiService(HttpClient httpClient, GoogleSearchService googleSearchService) : IAsyncInitializable
+public partial class MbtiService : IAsyncInitializable
 {
+    private readonly HttpClient httpClient;
+    private readonly GoogleSearchService googleSearchService;
+    private readonly UserIdentityService? userIdentityService;
+
+    public MbtiService(HttpClient httpClient, GoogleSearchService googleSearchService)
+        : this(httpClient, googleSearchService, null)
+    {
+    }
+
+    public MbtiService(HttpClient httpClient, GoogleSearchService googleSearchService,
+        UserIdentityService? userIdentityService)
+    {
+        this.httpClient = httpClient;
+        this.googleSearchService = googleSearchService;
+        this.userIdentityService = userIdentityService;
+    }
     private static string FilePath => DataPaths.Get("mbti_data.json");
 
     private const string UserAgentString =
@@ -89,15 +105,21 @@ public partial class MbtiService(HttpClient httpClient, GoogleSearchService goog
     }
 
     /// <summary>
-    /// Возвращает MBTI пользователя по его имени.
+    /// Возвращает MBTI пользователя по его имени и, если есть, по id на платформе.
     /// </summary>
     /// <param name="username">Имя пользователя.</param>
+    /// <param name="platform">Платформа, если известна.</param>
+    /// <param name="userId">Id пользователя на платформе, если известен.</param>
     /// <returns>Тип MBTI, если найден.</returns>
-    public virtual string? GetMbtiForUser(string username)
+    public virtual string? GetMbtiForUser(string username) =>
+        GetMbtiForUser(username, null, null);
+
+    public virtual string? GetMbtiForUser(string username, string? platform, string? userId)
     {
         try
         {
-            return _mbtiData.TryGetValue(username.ToLower(), out var mbti) ? mbti : null;
+            var aliases = Aliases(username, platform, userId);
+            return NickKeyedStore.TryGet(_mbtiData, aliases, out var mbti) ? mbti : null;
         }
         catch (Exception ex)
         {
@@ -133,12 +155,21 @@ public partial class MbtiService(HttpClient httpClient, GoogleSearchService goog
     /// </summary>
     /// <param name="username">Имя пользователя.</param>
     /// <param name="mbti">Тип MBTI.</param>
+    /// <param name="platform">Платформа, если известна.</param>
+    /// <param name="userId">Id пользователя на платформе, если известен.</param>
     /// <returns><c>true</c>, если операция успешна, иначе <c>false</c>.</returns>
-    public virtual async Task<bool> SetMbtiForUserAsync(string username, string mbti)
+    public virtual Task<bool> SetMbtiForUserAsync(string username, string mbti) =>
+        SetMbtiForUserAsync(username, mbti, null, null);
+
+    public virtual async Task<bool> SetMbtiForUserAsync(string username, string mbti, string? platform,
+        string? userId)
     {
         try
         {
-            _mbtiData[username.ToLower()] = mbti.ToUpper();
+            var aliases = userIdentityService != null
+                ? await userIdentityService.RememberAsync(username, platform, userId).ConfigureAwait(false)
+                : Aliases(username, platform, userId);
+            NickKeyedStore.Set(_mbtiData, aliases, username, mbti.ToUpper());
             await SaveDataAsync().ConfigureAwait(false);
             return true;
         }
@@ -147,6 +178,13 @@ public partial class MbtiService(HttpClient httpClient, GoogleSearchService goog
             Log.Error(ex, "Ошибка при добавлении MBTI для пользователя.");
             return false;
         }
+    }
+
+    private IReadOnlyList<string> Aliases(string username, string? platform, string? userId)
+    {
+        if (userIdentityService != null)
+            return userIdentityService.GetAliases(username, platform, userId);
+        return new[] {username};
     }
 
     [GeneratedRegex(@"\d+")]

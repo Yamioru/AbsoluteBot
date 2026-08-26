@@ -40,7 +40,7 @@ public partial class TwitchMessageDataProcessor(ConfigService configService) : I
         var isOwn = IsOwnBotMessage(chatMessage.Username) || IsOwnBotMessage(chatMessage.DisplayName);
         messageText = GetMessageText(chatMessage);
         if (string.IsNullOrEmpty(messageText)) return false;
-        if (isOwn && !messageText.TrimStart().StartsWith('!')) return false;
+        if (isOwn) return false;
 
         // Извлечение информации о сообщении-ответе (если есть)
         var replyInfo = GetReplyInfoFromMessage(chatMessage);
@@ -69,7 +69,10 @@ public partial class TwitchMessageDataProcessor(ConfigService configService) : I
             null,
             replyInfo,
             chatMessage.DisplayName
-        );
+        )
+        {
+            UserId = string.IsNullOrWhiteSpace(chatMessage.UserId) ? null : chatMessage.UserId
+        };
     }
 
     [GeneratedRegex(@"^@\S+\s+(!.+)$")]

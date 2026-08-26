@@ -32,7 +32,7 @@ public class TwitchMessageHandler(MessageProcessingService messageProcessingServ
         SaveLastMessage(context.Username, handledMessage);
         await RandomHandleMessage(context).ConfigureAwait(false);
         // Обрабатывается сообщение через MessageProcessingService (исправление раскладки, перевод)
-        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage).ConfigureAwait(false);
+        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId).ConfigureAwait(false);
         if (processedMessage != null)
         {
             // Применение цензуры

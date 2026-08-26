@@ -8,8 +8,7 @@ namespace AbsoluteBot.Services.ChatServices.VkPlayLive;
 internal static class VkPlayCentrifugoProtocol
 {
     public const int ConnectCommandId = 1;
-    public const string PublicChatPrefix = "public-chat:";
-    public const string LegacyChatPrefix = "channel-chat:";
+    public const string ChatChannelPrefix = "channel-chat:";
 
     public static string ConnectPayload(string token) =>
         "{\"connect\":{\"token\":\"" + token + "\",\"name\":\"js\"},\"id\":" + ConnectCommandId + "}";
@@ -18,8 +17,7 @@ internal static class VkPlayCentrifugoProtocol
     {
         return new[]
         {
-            (2, PublicChatPrefix + channelId),
-            (3, LegacyChatPrefix + channelId)
+            (2, ChatChannelPrefix + channelId)
         };
     }
 
@@ -48,7 +46,8 @@ internal static class VkPlayCentrifugoProtocol
                     ? ch.GetString()
                     : null;
                 var type = TryGetPushType(push);
-                return new VkPlayCentrifugoFrame("push", $"channel={channel} type={type}", type != "message");
+                return new VkPlayCentrifugoFrame("push", $"channel={channel} type={type}",
+                    type is not ("message" or "message_v8"));
             }
 
             return new VkPlayCentrifugoFrame("other", Truncate(json), true);

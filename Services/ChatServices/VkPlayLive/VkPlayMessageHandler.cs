@@ -24,7 +24,7 @@ public class VkPlayMessageHandler(MessageProcessingService messageProcessingServ
         SaveLastMessage(context.Username, handledMessage);
 
         // Обрабатывается сообщение через MessageProcessingService (исправление раскладки, перевод)
-        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage).ConfigureAwait(false);
+        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId).ConfigureAwait(false);
         if (processedMessage != null)
         {
             // Применение цензуры

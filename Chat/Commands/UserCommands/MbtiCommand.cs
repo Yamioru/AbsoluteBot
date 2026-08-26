@@ -31,7 +31,8 @@ public class MbtiCommand(MbtiService mbtiService) : BaseCommand, IParameterized
         var mbti = command.Parameters.Split('-')[0].Trim().ToUpper();
         if (MbtiService.IsValidMbti(mbti))
         {
-            if (await mbtiService.SetMbtiForUserAsync(command.Context.Username, mbti).ConfigureAwait(false))
+            if (await mbtiService.SetMbtiForUserAsync(command.Context.Username, mbti, command.Context.Platform,
+                    command.Context.UserId).ConfigureAwait(false))
                 return $"MBTI {mbti} успешно привязан к пользователю {command.Context.Username}.";
             return "Не удалось привязать MBTI к пользователю.";
         }

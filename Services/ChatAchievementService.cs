@@ -28,22 +28,35 @@ public class ChatAchievementService : IAsyncInitializable
 
     private readonly IAchievementClassifier _classifier;
     private readonly RoleService _roleService;
+    private readonly UserIdentityService? _userIdentityService;
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConcurrentDictionary<string, AchievementUserProgress> _users = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _lastAwardedUtc = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<string, AchievementDefinition> _catalog = new Dictionary<string, AchievementDefinition>(StringComparer.OrdinalIgnoreCase);
 
+    public ChatAchievementService(IAchievementClassifier classifier, RoleService roleService, UserIdentityService userIdentityService)
+        : this(classifier, roleService, TimeProvider.System, userIdentityService)
+    {
+    }
+
     public ChatAchievementService(IAchievementClassifier classifier, RoleService roleService)
-        : this(classifier, roleService, TimeProvider.System)
+        : this(classifier, roleService, TimeProvider.System, null)
     {
     }
 
     public ChatAchievementService(IAchievementClassifier classifier, RoleService roleService, TimeProvider timeProvider)
+        : this(classifier, roleService, timeProvider, null)
+    {
+    }
+
+    public ChatAchievementService(IAchievementClassifier classifier, RoleService roleService, TimeProvider timeProvider,
+        UserIdentityService? userIdentityService)
     {
         _classifier = classifier;
         _roleService = roleService;
         _timeProvider = timeProvider;
+        _userIdentityService = userIdentityService;
     }
 
     public async Task InitializeAsync()
@@ -63,11 +76,14 @@ public class ChatAchievementService : IAsyncInitializable
     /// <summary>
     ///     Классифицирует сообщение и при необходимости начисляет баллы. Ошибки глотаются — чат не блокируется.
     /// </summary>
-    public async Task TryRecordAsync(string? nickname, string? text, string? platform)
+    public Task TryRecordAsync(string? nickname, string? text, string? platform) =>
+        TryRecordAsync(nickname, text, platform, null);
+
+    public async Task TryRecordAsync(string? nickname, string? text, string? platform, string? userId)
     {
         try
         {
-            await RecordCoreAsync(nickname, text).ConfigureAwait(false);
+            await RecordCoreAsync(nickname, text, platform, userId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -87,13 +103,17 @@ public class ChatAchievementService : IAsyncInitializable
     internal static string GetProgressFilePath() =>
         DataPaths.Get(Path.Combine(ProgressDirectoryName, ProgressFileName));
 
-    private async Task RecordCoreAsync(string? nickname, string? text)
+    private async Task RecordCoreAsync(string? nickname, string? text, string? platform, string? userId)
     {
         if (string.IsNullOrWhiteSpace(nickname) || string.IsNullOrWhiteSpace(text)) return;
         if (text.StartsWith('!')) return;
         if (_catalog.Count == 0) return;
 
-        var role = _roleService.GetExistingUserRole(nickname);
+        IReadOnlyList<string> aliases = new[] {nickname};
+        if (_userIdentityService != null)
+            aliases = await _userIdentityService.RememberAsync(nickname, platform, userId).ConfigureAwait(false);
+
+        var role = _roleService.GetExistingUserRole(nickname, platform, userId);
         if (role is UserRole.Ignored or UserRole.Bot) return;
 
         IReadOnlyList<AchievementDefinition> catalog;
@@ -114,7 +134,7 @@ public class ChatAchievementService : IAsyncInitializable
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var awarded = ApplyAwards(nickname, text, ids);
+            var awarded = ApplyAwards(nickname, aliases, platform, userId, text, ids);
             if (awarded)
                 await SaveUnlockedAsync().ConfigureAwait(false);
         }
@@ -124,20 +144,21 @@ public class ChatAchievementService : IAsyncInitializable
         }
     }
 
-    private bool ApplyAwards(string nickname, string text, IReadOnlyList<string> ids)
+    private bool ApplyAwards(string nickname, IReadOnlyList<string> aliases, string? platform, string? userId, string text,
+        IReadOnlyList<string> ids)
     {
         var now = _timeProvider.GetUtcNow();
         var cooldown = TimeSpan.FromSeconds(CooldownSeconds);
         var lastMatch = Truncate(text);
         var changed = false;
 
-        var user = _users.GetOrAdd(nickname, key => new AchievementUserProgress {Nickname = key});
+        var user = FindOrAddUser(nickname, aliases);
 
         foreach (var id in ids)
         {
             if (!_catalog.TryGetValue(id, out var definition)) continue;
 
-            var cooldownKey = CooldownKey(nickname, definition.Id);
+            var cooldownKey = CooldownKey(nickname, definition.Id, platform, userId);
             if (_lastAwardedUtc.TryGetValue(cooldownKey, out var lastAt))
             {
                 var elapsed = now - lastAt;
@@ -228,7 +249,7 @@ public class ChatAchievementService : IAsyncInitializable
                 foreach (var entry in user.Achievements)
                 {
                     if (entry.LastAtUtc == null || string.IsNullOrWhiteSpace(entry.Id)) continue;
-                    _lastAwardedUtc[CooldownKey(user.Nickname, entry.Id)] = entry.LastAtUtc.Value;
+                    _lastAwardedUtc[CooldownKey(user.Nickname, entry.Id, null, null)] = entry.LastAtUtc.Value;
                 }
             }
         }
@@ -252,8 +273,29 @@ public class ChatAchievementService : IAsyncInitializable
         await Task.Run(() => File.Move(tempFilePath, path, true)).ConfigureAwait(false);
     }
 
-    private static string CooldownKey(string nickname, string achievementId) =>
-        $"{nickname.ToLowerInvariant()}|{achievementId.ToLowerInvariant()}";
+    private AchievementUserProgress FindOrAddUser(string nickname, IReadOnlyList<string> aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            if (string.IsNullOrWhiteSpace(alias)) continue;
+            if (!_users.TryGetValue(alias, out var existing)) continue;
+            if (!alias.Equals(nickname, StringComparison.OrdinalIgnoreCase))
+            {
+                _users.TryRemove(alias, out _);
+                existing.Nickname = nickname;
+                _users[nickname] = existing;
+            }
+
+            return existing;
+        }
+
+        return _users.GetOrAdd(nickname, key => new AchievementUserProgress {Nickname = key});
+    }
+
+    private static string CooldownKey(string nickname, string achievementId, string? platform, string? userId) =>
+        !string.IsNullOrWhiteSpace(userId)
+            ? $"{platform}:{userId}|{achievementId.ToLowerInvariant()}"
+            : $"{nickname.ToLowerInvariant()}|{achievementId.ToLowerInvariant()}";
 
     private static string Truncate(string text)
     {

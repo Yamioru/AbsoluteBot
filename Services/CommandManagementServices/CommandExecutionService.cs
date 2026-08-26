@@ -22,7 +22,7 @@ public class CommandExecutionService(ICommandParser commandParser, ICommandRegis
     public virtual async Task<string?> ExecuteCommandAsync(string text, ChatContext context)
     {
         // Получение роли пользователя
-        var userRole = await roleService.GetUserRoleAsync(context.Username).ConfigureAwait(false);
+        var userRole = await roleService.GetUserRoleAsync(context.Username, context.Platform, context.UserId).ConfigureAwait(false);
 
         // Парсинг команды
         var parsedCommand = commandParser.Parse(text, context, userRole);

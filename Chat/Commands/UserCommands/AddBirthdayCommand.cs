@@ -34,7 +34,7 @@ public class AddBirthdayCommand(BirthdayService birthdayService) : BaseCommand, 
                 "Ошибка: указан некорректный формат даты. Используйте числовой формат \"день месяц\" или \"день месяц (словом)\", например: \"23 сентября\" или \"23 09\".";
         date = new DateTime(DateTime.MinValue.Year, date.Month, date.Day);
         var formattedDate = date.ToString("d MMMM", new CultureInfo("ru-RU"));
-        return await birthdayService.AddOrUpdateUserBirthday(username, platform, date)
+        return await birthdayService.AddOrUpdateUserBirthday(username, platform, date, context.UserId)
             .ConfigureAwait(false)
             ? $"День рождения успешно добавлен: {formattedDate}. Уведомления включены на платформе {platform}."
             : "Не удалось добавить ваш день рождения.";

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AbsoluteBot.Services.UserManagementServices;
 using Serilog;
 
 namespace AbsoluteBot.Services.UtilityServices;
@@ -8,8 +9,20 @@ namespace AbsoluteBot.Services.UtilityServices;
 /// <summary>
 ///     Сервис для автоматического перевода сообщений пользователей.
 /// </summary>
-public partial class AutoTranslateService(TranslationService translationService) : IAsyncInitializable
+public partial class AutoTranslateService : IAsyncInitializable
 {
+    private readonly TranslationService translationService;
+    private readonly UserIdentityService? userIdentityService;
+
+    public AutoTranslateService(TranslationService translationService) : this(translationService, null)
+    {
+    }
+
+    public AutoTranslateService(TranslationService translationService, UserIdentityService? userIdentityService)
+    {
+        this.translationService = translationService;
+        this.userIdentityService = userIdentityService;
+    }
     private static string FilePath => DataPaths.Get("auto_translate_users.json");
     private const string TranslationLanguage = "RU";
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
@@ -31,11 +44,15 @@ public partial class AutoTranslateService(TranslationService translationService)
     /// </summary>
     /// <param name="username">Имя пользователя, для которого проверяется статус перевода.</param>
     /// <returns>Возвращает <c>true</c>, если перевод включен; иначе <c>false</c>.</returns>
-    public bool IsUserAutoTranslating(string username)
+    public bool IsUserAutoTranslating(string username) =>
+        IsUserAutoTranslating(username, null, null);
+
+    public bool IsUserAutoTranslating(string username, string? platform, string? userId)
     {
         try
         {
-            return _autoTranslateUsers.TryGetValue(username, out var isAutoTranslating) && isAutoTranslating;
+            var aliases = Aliases(username, platform, userId);
+            return NickKeyedStore.TryGetExact(_autoTranslateUsers, aliases, out var isAutoTranslating) && isAutoTranslating;
         }
         catch (Exception ex)
         {
@@ -49,14 +66,19 @@ public partial class AutoTranslateService(TranslationService translationService)
     /// </summary>
     /// <param name="username">Имя пользователя, для которого переключается статус перевода.</param>
     /// <returns>Возвращает <c>true</c>, если операция выполнена успешно, иначе <c>false</c>.</returns>
-    public virtual async Task<bool> ToggleUserAutoTranslateAsync(string username)
+    public virtual Task<bool> ToggleUserAutoTranslateAsync(string username) =>
+        ToggleUserAutoTranslateAsync(username, null, null);
+
+    public virtual async Task<bool> ToggleUserAutoTranslateAsync(string username, string? platform,
+        string? userId)
     {
         try
         {
-            if (_autoTranslateUsers.TryGetValue(username, out var value))
-                _autoTranslateUsers[username] = !value;
-            else
-                _autoTranslateUsers.TryAdd(username, true);
+            var aliases = userIdentityService != null
+                ? await userIdentityService.RememberAsync(username, platform, userId).ConfigureAwait(false)
+                : Aliases(username, platform, userId);
+            var enabled = NickKeyedStore.TryGetExact(_autoTranslateUsers, aliases, out var value) && value;
+            NickKeyedStore.SetExact(_autoTranslateUsers, aliases, username, !enabled);
 
             await SaveAutoTranslateUsersAsync(_autoTranslateUsers).ConfigureAwait(false);
             return true;
@@ -74,9 +96,13 @@ public partial class AutoTranslateService(TranslationService translationService)
     /// <param name="username">Имя пользователя, от которого получено сообщение.</param>
     /// <param name="message">Сообщение, подлежащее переводу.</param>
     /// <returns>Переведенное сообщение или <c>null</c>, если перевод не был выполнен или не нужен.</returns>
-    public async Task<string?> TranslateUserMessageAsync(string username, string message)
+    public Task<string?> TranslateUserMessageAsync(string username, string message) =>
+        TranslateUserMessageAsync(username, message, null, null);
+
+    public async Task<string?> TranslateUserMessageAsync(string username, string message, string? platform,
+        string? userId)
     {
-        if (!_autoTranslateUsers.TryGetValue(username, out var value) || !value) return null;
+        if (!IsUserAutoTranslating(username, platform, userId)) return null;
         var translatedText = await translationService.TranslateTextAsync(message, TranslationLanguage).ConfigureAwait(false);
 
         if (translatedText == null) return null;
@@ -87,6 +113,13 @@ public partial class AutoTranslateService(TranslationService translationService)
         return filteredTranslated.Equals(filteredOriginal, StringComparison.InvariantCultureIgnoreCase)
             ? null
             : translatedText;
+    }
+
+    private IReadOnlyList<string> Aliases(string username, string? platform, string? userId)
+    {
+        if (userIdentityService != null)
+            return userIdentityService.GetAliases(username, platform, userId);
+        return new[] {username};
     }
 
     [GeneratedRegex("[^a-zA-Zа-яА-Я]")]

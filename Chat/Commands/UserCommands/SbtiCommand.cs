@@ -24,7 +24,8 @@ public class SbtiCommand(SbtiService sbtiService) : BaseCommand, IParameterized
         var sbti = command.Parameters.ToUpper();
         if (SbtiService.IsValidSbti(sbti))
         {
-            if (await sbtiService.SetSbtiForUserAsync(command.Context.Username, sbti).ConfigureAwait(false))
+            if (await sbtiService.SetSbtiForUserAsync(command.Context.Username, sbti, command.Context.Platform,
+                    command.Context.UserId).ConfigureAwait(false))
                 return $"Тип SBTI '{sbti}' успешно привязан к пользователю {command.Context.Username}.";
             return "Не удалось привязать SBTI к пользователю.";
         }

@@ -65,7 +65,7 @@ public abstract class BaseMessageHandler(ConfigService configService, RoleServic
     protected async Task<string?> HandleMention(string text, ChatContext context, double randomMentionProbability = DefaultRandomMentionProbability)
     {
         // Получение роли пользователя
-        var userRole = await roleService.GetUserRoleAsync(context.Username).ConfigureAwait(false);
+        var userRole = await roleService.GetUserRoleAsync(context.Username, context.Platform, context.UserId).ConfigureAwait(false);
         if (userRole == UserRole.Ignored) return null;
         if (IsBotMentioned(text, context) && IsMessageInvalid(context.Reply?.Message))
         {

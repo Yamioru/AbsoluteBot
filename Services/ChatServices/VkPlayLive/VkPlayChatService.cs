@@ -76,7 +76,7 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
             await _connectionManager!.ConnectAsync().ConfigureAwait(false);
             _messageReceiver!.StartReceivingMessages();
             Log.ForContext("ConnectionEvent", true)
-                .Information("Подключение к VkPlay произошло успешно. Чат: public-chat и channel-chat.");
+                .Information("Подключение к VkPlay произошло успешно. Чат: channel-chat.");
         });
     }
 
@@ -185,8 +185,8 @@ public class VkPlayChatService(ConfigService configService, ICensorshipService c
             if (messageProcessor.TryParseValidMessage(message, this, out var messageText, out var context))
             {
                 Log.Information("VK Live входящее от {Username}: {Text}", context.Username, TruncateForLog(messageText));
-                await streamChatterStatsService.RecordMessageAsync(context.Username).ConfigureAwait(false);
-                _ = chatAchievementService.TryRecordAsync(context.Username, messageText, "VkPlayLive");
+                await streamChatterStatsService.RecordMessageAsync(context.Username, context.Platform, context.UserId).ConfigureAwait(false);
+                _ = chatAchievementService.TryRecordAsync(context.Username, messageText, "VkPlayLive", context.UserId);
                 var processedMessage = await messageHandler.HandleMessageAsync(messageText, context).ConfigureAwait(false);
                 MessageReceived?.Invoke(this, new MessageReceivedEventArgs(processedMessage, context));
             }

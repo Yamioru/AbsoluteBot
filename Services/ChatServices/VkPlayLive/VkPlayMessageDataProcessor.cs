@@ -16,6 +16,8 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
     private const string ContentTypeText = "text";
     private const string ContentTypeMention = "mention";
     private const string MessageType = "message";
+    private const string MessageTypeV8 = "message_v8";
+    private const string BlockEndModificator = "BLOCK_END";
     private string? _commonBotName;
     private string? _vkPlayBotName;
 
@@ -47,7 +49,7 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
         text = GetJoinedTextFromMessageData(messageData);
         if (string.IsNullOrEmpty(text)) return false;
 
-        if (IsOwnBotUsername(username) && !IsOwnCommandAllowed(text))
+        if (IsOwnBotUsername(username))
             return false;
 
         // Извлечение Id сообщения
@@ -73,6 +75,8 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
             messageId,
             urls
         );
+        if (messageData.Author is { Id: > 0 })
+            context.UserId = messageData.Author.Id.ToString();
 
         return true;
     }
@@ -159,6 +163,8 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
     /// <returns>Объединённый текст всех частей сообщения.</returns>
     private string? GetJoinedTextFromMessageData(VkPlayMessage messageData)
     {
+        if (!string.IsNullOrWhiteSpace(messageData.PlainText))
+            return ReplaceBotName(messageData.PlainText.Trim());
         return ReplaceBotName(string.Join(" ", ExtractTextContents(messageData)).Trim());
     }
 
@@ -183,7 +189,8 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
     /// <returns>True, если контент является текстовым или упоминанием и не пустым, иначе False.</returns>
     private static bool IsValidTextOrMentionContent(VkPlayMessageContent content)
     {
-        return (content.ContentType == ContentTypeText && !string.IsNullOrWhiteSpace(content.Content)) ||
+        return (content.ContentType == ContentTypeText && !string.IsNullOrWhiteSpace(content.Content) &&
+                !string.Equals(content.Modificator, BlockEndModificator, StringComparison.OrdinalIgnoreCase)) ||
                (content.ContentType == ContentTypeMention && !string.IsNullOrWhiteSpace(content.Nickname));
     }
 
@@ -206,10 +213,30 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
     {
         try
         {
-            var vkPlayMessageEnvelope = JsonSerializer.Deserialize<VkPlayMessageEnvelope>(rawMessage);
-            return vkPlayMessageEnvelope?.Push?.Publication?.MessageContainer?.MessageType == MessageType
-                ? vkPlayMessageEnvelope.Push.Publication.MessageContainer.Message
-                : null;
+            using var document = JsonDocument.Parse(rawMessage);
+            if (!TryGetPubData(document.RootElement, out var data)) return null;
+            if (!data.TryGetProperty("type", out var typeEl) || typeEl.ValueKind != JsonValueKind.String)
+                return null;
+
+            var type = typeEl.GetString();
+            if (type != MessageType && type != MessageTypeV8) return null;
+
+            JsonElement messageElement;
+            if (type == MessageTypeV8)
+            {
+                if (!data.TryGetProperty("data", out var v8Data) || v8Data.ValueKind != JsonValueKind.Object)
+                    return null;
+                if (!v8Data.TryGetProperty("chatMessageSend", out var send) || send.ValueKind != JsonValueKind.Object)
+                    return null;
+                if (!send.TryGetProperty("message", out messageElement) || messageElement.ValueKind != JsonValueKind.Object)
+                    return null;
+            }
+            else if (!data.TryGetProperty("data", out messageElement) || messageElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            return MapChatMessage(messageElement);
         }
         catch (JsonException)
         {
@@ -220,6 +247,78 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
             Log.Error(ex, "Ошибка при парсинге сообщения VkPlayLive.");
             return null;
         }
+    }
+
+    private static bool TryGetPubData(JsonElement root, out JsonElement data)
+    {
+        data = default;
+        return root.TryGetProperty("push", out var push) && push.ValueKind == JsonValueKind.Object &&
+               push.TryGetProperty("pub", out var pub) && pub.ValueKind == JsonValueKind.Object &&
+               pub.TryGetProperty("data", out data) && data.ValueKind == JsonValueKind.Object;
+    }
+
+    private static VkPlayMessage MapChatMessage(JsonElement messageElement)
+    {
+        var message = new VkPlayMessage
+        {
+            MessageId = ReadMessageId(messageElement),
+            Author = ReadAuthor(messageElement),
+            PlainText = ReadString(messageElement, "text"),
+            Contents = ReadContents(messageElement),
+            ParentMessage = ReadParent(messageElement)
+        };
+        return message;
+    }
+
+    private static int ReadMessageId(JsonElement messageElement)
+    {
+        if (!messageElement.TryGetProperty("id", out var idEl)) return 0;
+        if (idEl.ValueKind == JsonValueKind.Number && idEl.TryGetInt32(out var number)) return number;
+        if (idEl.ValueKind == JsonValueKind.String && int.TryParse(idEl.GetString(), out number)) return number;
+        return 0;
+    }
+
+    private static VkPlayUser? ReadAuthor(JsonElement messageElement)
+    {
+        if (!messageElement.TryGetProperty("author", out var author) || author.ValueKind != JsonValueKind.Object)
+            return null;
+        return JsonSerializer.Deserialize<VkPlayUser>(author.GetRawText());
+    }
+
+    private static List<VkPlayMessageContent>? ReadContents(JsonElement messageElement)
+    {
+        if (messageElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+            return JsonSerializer.Deserialize<List<VkPlayMessageContent>>(data.GetRawText());
+
+        if (!messageElement.TryGetProperty("textData", out var textData) || textData.ValueKind != JsonValueKind.Array)
+            return null;
+
+        var contents = new List<VkPlayMessageContent>();
+        foreach (var item in textData.EnumerateArray())
+        {
+            var block = item.ValueKind == JsonValueKind.Object && item.TryGetProperty("text", out var textBlock)
+                ? textBlock
+                : item;
+            var content = JsonSerializer.Deserialize<VkPlayMessageContent>(block.GetRawText());
+            if (content != null) contents.Add(content);
+        }
+
+        return contents;
+    }
+
+    private static VkPlayParentMessage? ReadParent(JsonElement messageElement)
+    {
+        if (!messageElement.TryGetProperty("parent", out var parent) || parent.ValueKind != JsonValueKind.Object)
+            return null;
+        return JsonSerializer.Deserialize<VkPlayParentMessage>(parent.GetRawText());
+    }
+
+    private static string? ReadString(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String)
+            return null;
+        var text = value.GetString();
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
     /// <summary>
@@ -277,15 +376,5 @@ public class VkPlayMessageDataProcessor(ConfigService configService) : IAsyncIni
                 username.Equals(_vkPlayBotName, StringComparison.InvariantCultureIgnoreCase)) ||
                (!string.IsNullOrEmpty(_commonBotName) &&
                 username.Equals(_commonBotName, StringComparison.InvariantCultureIgnoreCase));
-    }
-
-    /// <summary>
-    ///     Временно разрешает собственные сообщения бота, если это команда (<c>!</c>),
-    ///     чтобы можно было отвечать на свои же команды. Репосты <c>[Twitch]</c> не пропускаются.
-    /// </summary>
-    internal static bool IsOwnCommandAllowed(string text)
-    {
-        var trimmed = text.TrimStart();
-        return trimmed.StartsWith('!') && !trimmed.StartsWith("[Twitch]", StringComparison.OrdinalIgnoreCase);
     }
 }

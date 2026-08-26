@@ -11,6 +11,16 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// </summary>
 public class RoleService : IAsyncInitializable
 {
+    private readonly UserIdentityService? userIdentityService;
+
+    public RoleService() : this(null)
+    {
+    }
+
+    public RoleService(UserIdentityService? userIdentityService)
+    {
+        this.userIdentityService = userIdentityService;
+    }
     private static string FilePath => DataPaths.Get("user_roles.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
@@ -34,19 +44,40 @@ public class RoleService : IAsyncInitializable
         }
     }
 
+    public virtual Task<UserRole> GetUserRoleAsync(string username) =>
+        GetUserRoleAsync(username, null, null);
+
     /// <summary>
-    ///     Асинхронно возвращает роль пользователя по его имени.
+    ///     Асинхронно возвращает роль пользователя по его имени и, если есть, по id на платформе.
     ///     Если пользователь не найден, присваивается роль по умолчанию.
     /// </summary>
-    /// <param name="username">Имя пользователя.</param>
-    /// <returns>Роль пользователя.</returns>
-    public virtual async Task<UserRole> GetUserRoleAsync(string username)
+    public virtual async Task<UserRole> GetUserRoleAsync(string username, string? platform, string? userId)
     {
+        IReadOnlyList<string> aliases = Array.Empty<string>();
+        try
+        {
+            if (userIdentityService != null)
+                aliases = await userIdentityService.RememberAsync(username, platform, userId).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Ошибка при обновлении идентичности для роли.");
+        }
+
         await Semaphore.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_userRoles.TryGetValue(username.ToLower(), out var role))
+            if (NickKeyedStore.TryGet(_userRoles, WithCurrent(aliases, username), out var role))
+            {
+                var current = username.ToLower();
+                if (!_userRoles.ContainsKey(current))
+                {
+                    _userRoles[current] = role;
+                    await SaveUserRolesAsync(_userRoles).ConfigureAwait(false);
+                }
+
                 return role;
+            }
 
             _userRoles[username.ToLower()] = UserRole.Default;
             await SaveUserRolesAsync(_userRoles).ConfigureAwait(false);
@@ -64,13 +95,17 @@ public class RoleService : IAsyncInitializable
         }
     }
 
+    public virtual UserRole GetExistingUserRole(string username) =>
+        GetExistingUserRole(username, null, null);
+
     /// <summary>
     ///     Возвращает уже известную роль без записи нового пользователя в файл.
     /// </summary>
-    public virtual UserRole GetExistingUserRole(string username)
+    public virtual UserRole GetExistingUserRole(string username, string? platform, string? userId)
     {
         if (string.IsNullOrWhiteSpace(username)) return UserRole.Default;
-        return _userRoles.TryGetValue(username.ToLower(), out var role) ? role : UserRole.Default;
+        var aliases = userIdentityService?.GetAliases(username, platform, userId) ?? new[] {username};
+        return NickKeyedStore.TryGet(_userRoles, WithCurrent(aliases, username), out var role) ? role : UserRole.Default;
     }
 
     /// <summary>
@@ -83,15 +118,30 @@ public class RoleService : IAsyncInitializable
     ///     <c>true</c>, если роль была успешно назначена;
     ///     <c>false</c>, если попытка изменить роль администратора или произошла ошибка.
     /// </returns>
-    public virtual async Task<bool> SetUserRoleAsync(string username, UserRole role)
+    public virtual Task<bool> SetUserRoleAsync(string username, UserRole role) =>
+        SetUserRoleAsync(username, role, null, null);
+
+    public virtual async Task<bool> SetUserRoleAsync(string username, UserRole role, string? platform, string? userId)
     {
+        IReadOnlyList<string> aliases = Array.Empty<string>();
+        try
+        {
+            if (userIdentityService != null)
+                aliases = await userIdentityService.RememberAsync(username, platform, userId).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Ошибка при обновлении идентичности для роли.");
+        }
+
         await Semaphore.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_userRoles.TryGetValue(username.ToLower(), out var userRole) && userRole is UserRole.Administrator or UserRole.Bot)
+            var keys = WithCurrent(aliases, username);
+            if (NickKeyedStore.TryGet(_userRoles, keys, out var userRole) && userRole is UserRole.Administrator or UserRole.Bot)
                 return false;
 
-            _userRoles[username.ToLower()] = role;
+            NickKeyedStore.Set(_userRoles, keys, username, role);
             await SaveUserRolesAsync(_userRoles).ConfigureAwait(false);
             return true;
         }
@@ -104,6 +154,15 @@ public class RoleService : IAsyncInitializable
         {
             Semaphore.Release();
         }
+    }
+
+    private static IReadOnlyList<string> WithCurrent(IReadOnlyList<string> aliases, string username)
+    {
+        if (aliases.Count == 0) return new[] {username};
+        if (aliases.Any(a => a.Equals(username, StringComparison.OrdinalIgnoreCase))) return aliases;
+        var list = new List<string>(aliases.Count + 1) {username};
+        list.AddRange(aliases);
+        return list;
     }
 
     /// <summary>

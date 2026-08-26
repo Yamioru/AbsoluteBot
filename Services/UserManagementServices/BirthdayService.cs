@@ -10,8 +10,20 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// <summary>
 ///     Сервис для управления днями рождения пользователей и отправки поздравлений.
 /// </summary>
-public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
+public class BirthdayService : IAsyncInitializable
 {
+    private readonly INeuralAskService neuralAsk;
+    private readonly UserIdentityService? userIdentityService;
+
+    public BirthdayService(INeuralAskService neuralAsk) : this(neuralAsk, null)
+    {
+    }
+
+    public BirthdayService(INeuralAskService neuralAsk, UserIdentityService? userIdentityService)
+    {
+        this.neuralAsk = neuralAsk;
+        this.userIdentityService = userIdentityService;
+    }
     private static string FilePath => DataPaths.Get("user_birthdays.json");
     private const int MaxMessageLength = 250;
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
@@ -35,22 +47,29 @@ public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
     /// <param name="platform">Название платформы.</param>
     /// <param name="birthDateTime">Дата рождения - месяц и день</param>
     /// <returns><c>true</c>, если операция выполнена успешно; иначе <c>false</c>.</returns>
-    public virtual async Task<bool> AddOrUpdateUserBirthday(string username, string platform, DateTime birthDateTime)
+    public virtual Task<bool> AddOrUpdateUserBirthday(string username, string platform, DateTime birthDateTime) =>
+        AddOrUpdateUserBirthday(username, platform, birthDateTime, null);
+
+    public virtual async Task<bool> AddOrUpdateUserBirthday(string username, string platform, DateTime birthDateTime,
+        string? userId)
     {
         try
         {
-            var userBirthdayInfo = GetUserBirthdayInfo(username);
+            if (userIdentityService != null)
+                await userIdentityService.RememberAsync(username, platform, userId).ConfigureAwait(false);
+
+            var userBirthdayInfo = GetUserBirthdayInfo(username, platform, userId);
 
             if (userBirthdayInfo == null)
             {
                 // Создание новой записи для пользователя
-                userBirthdayInfo = CreateNewUserBirthday(username, platform, birthDateTime);
+                userBirthdayInfo = CreateNewUserBirthday(username, platform, birthDateTime, userId);
                 _userBirthdayInfos.Add(userBirthdayInfo);
             }
             else
             {
                 // Обновление существующей информации
-                UpdateExistingUserBirthday(userBirthdayInfo, platform, birthDateTime);
+                UpdateExistingUserBirthday(userBirthdayInfo, username, platform, birthDateTime, userId);
             }
 
             await SaveUserBirthdaysAsync(_userBirthdayInfos).ConfigureAwait(false); // Сохранение изменений
@@ -93,11 +112,15 @@ public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
     /// <param name="username">Имя пользователя.</param>
     /// <param name="platform">Платформа для отключения уведомлений.</param>
     /// <returns><c>true</c>, если уведомления успешно отключены; иначе <c>false</c>.</returns>
-    public virtual async Task<bool> DisableBirthdayNotificationForPlatformAsync(string username, string platform)
+    public virtual Task<bool> DisableBirthdayNotificationForPlatformAsync(string username, string platform) =>
+        DisableBirthdayNotificationForPlatformAsync(username, platform, null);
+
+    public virtual async Task<bool> DisableBirthdayNotificationForPlatformAsync(string username, string platform,
+        string? userId)
     {
         try
         {
-            var userBirthdayInfo = GetUserBirthdayInfo(username);
+            var userBirthdayInfo = GetUserBirthdayInfo(username, platform, userId);
             if (userBirthdayInfo == null) return false;
 
             if (!userBirthdayInfo.NotifyOnPlatforms.ContainsKey(platform))
@@ -121,9 +144,12 @@ public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
     /// <param name="username">Никнейм пользователя.</param>
     /// <param name="platform">Платформа, на которой будет поздравление.</param>
     /// <returns>Текст поздравления или null, если поздравлять не надо.</returns>
-    public async Task<string?> FindAndCongratulateUser(string username, string platform)
+    public Task<string?> FindAndCongratulateUser(string username, string platform) =>
+        FindAndCongratulateUser(username, platform, null);
+
+    public async Task<string?> FindAndCongratulateUser(string username, string platform, string? userId)
     {
-        var userInfo = GetUserBirthdayInfo(username);
+        var userInfo = GetUserBirthdayInfo(username, platform, userId);
         if (userInfo == null) return null;
 
         return await CongratulateUserAsync(userInfo, platform).ConfigureAwait(false);
@@ -176,11 +202,14 @@ public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
     ///     Сообщение с количеством дней, часов и минут до дня рождения пользователя, или поздравительное сообщение, если
     ///     день рождения сегодня.
     /// </returns>
-    public virtual string GetTimeUntilUserBirthdayForPlatform(string username, string platform)
+    public virtual string GetTimeUntilUserBirthdayForPlatform(string username, string platform) =>
+        GetTimeUntilUserBirthdayForPlatform(username, platform, null);
+
+    public virtual string GetTimeUntilUserBirthdayForPlatform(string username, string platform, string? userId)
     {
         try
         {
-            var userInfo = GetUserBirthdayInfo(username);
+            var userInfo = GetUserBirthdayInfo(username, platform, userId);
             if (userInfo == null || !userInfo.NotifyOnPlatforms.TryGetValue(platform, out var notify) || !notify)
                 return "Информация о дне рождения не найдена или уведомления отключены.";
 
@@ -228,15 +257,20 @@ public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
     /// <param name="platform">Платформа, на которой будут отправляться уведомления.</param>
     /// <param name="birthDateTime">Дата рождения - месяц и день</param>
     /// <returns>Объект <see cref="UserBirthdayInfo" /> с заполненными данными.</returns>
-    private static UserBirthdayInfo CreateNewUserBirthday(string username, string platform, DateTime birthDateTime)
+    private static UserBirthdayInfo CreateNewUserBirthday(string username, string platform, DateTime birthDateTime,
+        string? userId)
     {
-        return new UserBirthdayInfo
+        var info = new UserBirthdayInfo
         {
             UserName = username,
             Nicknames = new List<string> {username},
             DateOfBirth = birthDateTime,
-            NotifyOnPlatforms = new Dictionary<string, bool> {{platform, true}}
+            NotifyOnPlatforms = new Dictionary<string, bool> {{platform, true}},
+            PlatformIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         };
+        if (!string.IsNullOrWhiteSpace(userId))
+            info.PlatformIds[platform] = userId;
+        return info;
     }
 
     /// <summary>
@@ -325,11 +359,39 @@ public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
     /// </summary>
     /// <param name="username">Имя пользователя.</param>
     /// <returns>Информация о дне рождения пользователя или <c>null</c>, если информация не найдена.</returns>
-    private UserBirthdayInfo? GetUserBirthdayInfo(string username)
+    private UserBirthdayInfo? GetUserBirthdayInfo(string username, string? platform = null, string? userId = null)
     {
-        return _userBirthdayInfos
-            .FirstOrDefault(u => u.Nicknames.Any(nickname =>
-                nickname.Equals(username, StringComparison.InvariantCultureIgnoreCase)));
+        UserBirthdayInfo? found = null;
+        if (!string.IsNullOrWhiteSpace(platform) && !string.IsNullOrWhiteSpace(userId))
+        {
+            found = _userBirthdayInfos.FirstOrDefault(u =>
+                u.PlatformIds != null &&
+                u.PlatformIds.TryGetValue(platform, out var id) &&
+                string.Equals(id, userId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (found == null)
+        {
+            var aliases = userIdentityService?.GetAliases(username, platform, userId) ?? new[] {username};
+            found = _userBirthdayInfos.FirstOrDefault(u =>
+                aliases.Any(alias =>
+                    u.UserName.Equals(alias, StringComparison.InvariantCultureIgnoreCase) ||
+                    u.Nicknames.Any(nickname => nickname.Equals(alias, StringComparison.InvariantCultureIgnoreCase))));
+        }
+
+        if (found != null)
+            AttachIdentity(found, username, platform, userId);
+        return found;
+    }
+
+    private static void AttachIdentity(UserBirthdayInfo info, string username, string? platform, string? userId)
+    {
+        if (!info.Nicknames.Any(n => n.Equals(username, StringComparison.OrdinalIgnoreCase)))
+            info.Nicknames.Add(username);
+        info.UserName = username;
+        if (string.IsNullOrWhiteSpace(platform) || string.IsNullOrWhiteSpace(userId)) return;
+        info.PlatformIds ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        info.PlatformIds[platform] = userId;
     }
 
     /// <summary>
@@ -386,7 +448,15 @@ public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
             }
 
             var birthdaysJson = await File.ReadAllTextAsync(FilePath).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<List<UserBirthdayInfo>>(birthdaysJson) ?? new List<UserBirthdayInfo>();
+            var loaded = JsonSerializer.Deserialize<List<UserBirthdayInfo>>(birthdaysJson) ?? new List<UserBirthdayInfo>();
+            foreach (var info in loaded)
+            {
+                info.Nicknames ??= new List<string>();
+                info.PlatformIds = new Dictionary<string, string>(
+                    info.PlatformIds ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+            }
+
+            return loaded;
         }
         catch (Exception ex)
         {
@@ -428,10 +498,19 @@ public class BirthdayService(INeuralAskService neuralAsk) : IAsyncInitializable
     /// <param name="userBirthdayInfo">Информация о дне рождения пользователя для обновления.</param>
     /// <param name="platform">Платформа, на которой будут отправляться уведомления.</param>
     /// <param name="birthDateTime">Дата рождения - месяц и день</param>
-    private static void UpdateExistingUserBirthday(UserBirthdayInfo userBirthdayInfo, string platform, DateTime birthDateTime)
+    private static void UpdateExistingUserBirthday(UserBirthdayInfo userBirthdayInfo, string username, string platform,
+        DateTime birthDateTime, string? userId)
     {
         userBirthdayInfo.DateOfBirth = birthDateTime;
         userBirthdayInfo.NotifyOnPlatforms[platform] = true;
+        if (!userBirthdayInfo.Nicknames.Any(n => n.Equals(username, StringComparison.OrdinalIgnoreCase)))
+            userBirthdayInfo.Nicknames.Add(username);
+        userBirthdayInfo.UserName = username;
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            userBirthdayInfo.PlatformIds ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            userBirthdayInfo.PlatformIds[platform] = userId;
+        }
     }
 
     /// <summary>

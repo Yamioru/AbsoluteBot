@@ -46,4 +46,8 @@ public abstract class ChatContext(string platform, string username, int maxMessa
     ///     Имя пользователя, который взаимодействует с ботом.
     /// </summary>
     public string Username { get; set; } = username;
+    /// <summary>
+    ///     Стабильный id пользователя на платформе (Twitch UserId, VK Live author.id, Telegram/Discord snowflake).
+    /// </summary>
+    public string? UserId { get; set; }
 }

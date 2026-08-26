@@ -10,6 +10,16 @@ namespace AbsoluteBot.Services.UserManagementServices;
 /// </summary>
 public class SbtiService : IAsyncInitializable
 {
+    private readonly UserIdentityService? userIdentityService;
+
+    public SbtiService() : this(null)
+    {
+    }
+
+    public SbtiService(UserIdentityService? userIdentityService)
+    {
+        this.userIdentityService = userIdentityService;
+    }
     private static string FilePath => DataPaths.Get("sbti_data.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
@@ -63,9 +73,13 @@ public class SbtiService : IAsyncInitializable
         return SbtiDescriptions.TryGetValue(key, out var desc) ? desc : "Неизвестный архетип.";
     }
 
-    public virtual string? GetSbtiForUser(string username)
+    public virtual string? GetSbtiForUser(string username) =>
+        GetSbtiForUser(username, null, null);
+
+    public virtual string? GetSbtiForUser(string username, string? platform, string? userId)
     {
-        return _sbtiData.TryGetValue(username.ToLower(), out var sbti) ? sbti : null;
+        var aliases = Aliases(username, platform, userId);
+        return NickKeyedStore.TryGet(_sbtiData, aliases, out var sbti) ? sbti : null;
     }
 
     public static bool IsValidSbti(string sbti)
@@ -73,11 +87,18 @@ public class SbtiService : IAsyncInitializable
         return SbtiDescriptions.ContainsKey(sbti.Trim().ToUpper());
     }
 
-    public virtual async Task<bool> SetSbtiForUserAsync(string username, string sbti)
+    public virtual Task<bool> SetSbtiForUserAsync(string username, string sbti) =>
+        SetSbtiForUserAsync(username, sbti, null, null);
+
+    public virtual async Task<bool> SetSbtiForUserAsync(string username, string sbti, string? platform,
+        string? userId)
     {
         try
         {
-            _sbtiData[username.ToLower()] = sbti.Trim().ToUpper();
+            var aliases = userIdentityService != null
+                ? await userIdentityService.RememberAsync(username, platform, userId).ConfigureAwait(false)
+                : Aliases(username, platform, userId);
+            NickKeyedStore.Set(_sbtiData, aliases, username, sbti.Trim().ToUpper());
             await SaveDataAsync().ConfigureAwait(false);
             return true;
         }
@@ -86,6 +107,13 @@ public class SbtiService : IAsyncInitializable
             Log.Error(ex, "Ошибка при добавлении SBTI для пользователя.");
             return false;
         }
+    }
+
+    private IReadOnlyList<string> Aliases(string username, string? platform, string? userId)
+    {
+        if (userIdentityService != null)
+            return userIdentityService.GetAliases(username, platform, userId);
+        return new[] {username};
     }
 
     private async Task LoadSbtiAsync()

@@ -23,6 +23,10 @@ public class UserBirthdayInfo
     /// </summary>
     public List<string> Nicknames { get; set; } = new();
     /// <summary>
+    ///     Id пользователя по платформам (VkPlayLive, Twitch, Telegram, Discord).
+    /// </summary>
+    public Dictionary<string, string> PlatformIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
     ///     Имя пользователя.
     /// </summary>
     public required string UserName { get; set; }

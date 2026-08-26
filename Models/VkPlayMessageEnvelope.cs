@@ -52,6 +52,7 @@ public class VkPlayMessage
 {
     [JsonPropertyName("id")] public int MessageId { get; set; }
     [JsonPropertyName("data")] public List<VkPlayMessageContent>? Contents { get; set; }
+    [JsonPropertyName("text")] public string? PlainText { get; set; }
     [JsonPropertyName("parent")] public VkPlayParentMessage? ParentMessage { get; set; }
     [JsonPropertyName("author")] public VkPlayUser? Author { get; set; }
 }
@@ -61,6 +62,7 @@ public class VkPlayMessage
 /// </summary>
 public class VkPlayUser
 {
+    [JsonPropertyName("id")] public long Id { get; set; }
     [JsonPropertyName("name")] public string? UserName { get; set; }
     [JsonPropertyName("nick")] public string? Nick { get; set; }
     [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
@@ -95,4 +97,5 @@ public class VkPlayMessageContent
     [JsonPropertyName("type")] public string? ContentType { get; set; }
     [JsonPropertyName("nick")] public string? Nickname { get; set; }
     [JsonPropertyName("url")] public string? Url { get; set; }
+    [JsonPropertyName("modificator")] public string? Modificator { get; set; }
 }

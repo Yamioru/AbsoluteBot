@@ -470,7 +470,7 @@ public class TelegramChatService(ConfigService configService, TelegramMessageDat
 
         // Передача сообщения в обработчик сообщений
         var parsed = parsedMessageResult.Value;
-        _ = chatAchievementService.TryRecordAsync(parsed.context.Username, parsed.text, "Telegram");
+        _ = chatAchievementService.TryRecordAsync(parsed.context.Username, parsed.text, "Telegram", parsed.context.UserId);
 
         var processedMessage =
             await messageHandler.HandleMessageAsync(parsed.text, parsed.context, message.EditDate != null)

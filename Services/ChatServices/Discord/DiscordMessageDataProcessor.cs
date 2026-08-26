@@ -84,6 +84,8 @@ public partial class DiscordMessageDataProcessor(DiscordGuildChannelService guil
             replyInfo,
             tagList
         );
+        if (message.Author != null)
+            context.UserId = message.Author.Id.ToString();
 
         return (cleanedText, context);
     }

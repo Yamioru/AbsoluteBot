@@ -13,7 +13,7 @@ public abstract class BirthdayBaseMessageHandler(ConfigService configService, Bi
     /// <param name="username">Имя пользователя, которого нужно поздравить.</param>
     protected async Task BirthdayHandle(ChatContext context, string username)
     {
-        var birthdayMessage = await birthdayService.FindAndCongratulateUser(username, context.Platform).ConfigureAwait(false);
+        var birthdayMessage = await birthdayService.FindAndCongratulateUser(username, context.Platform, context.UserId).ConfigureAwait(false);
         if (!string.IsNullOrEmpty(birthdayMessage)) await context.ChatService.SendMessageAsync(birthdayMessage, context).ConfigureAwait(false);
     }
 }
