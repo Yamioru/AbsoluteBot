@@ -1,0 +1,27 @@
+services:
+  absolutebot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: absolutebot
+    restart: always
+    working_dir: /app
+    ports:
+    - "5000:5000"
+    volumes:
+      - ${ABS_DATA_DIR:-./data}:/app
+    cpus: 0.75
+    mem_limit: 1000m
+    mem_reservation: 250m
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 1000M
+        reservations:
+          memory: 250M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

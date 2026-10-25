@@ -2,7 +2,7 @@
 
 **AbsoluteBot** — кросс-платформенный чат-бот на .NET 8 для стрима. Он живёт в Twitch, VK Live, Telegram и Discord, отвечает на команды, модерирует чат, ведёт учёт игр и общается через нейросеть. Если у платформы нет ключей, бот продолжает работать на остальных.
 
-Этот каталог и есть репозиторий на GitHub. Каталог команд — ниже. Устройство слоёв, данных и деплоя — в [architecture.md](architecture.md). Решение с тестами, данными и Docker лежит на уровень выше и в этот репозиторий не входит.
+Каталог команд — ниже. Устройство слоёв, данных и деплоя — в [architecture.md](architecture.md). В этом репозитории лежат проект `AbsoluteBot`, тесты, Docker и скрипты обновления.
 
 ## Содержание
 
@@ -22,25 +22,25 @@
 - Нейросети: Gemini и Groq как сменяемый провайдер, отдельный клиент OpenAI, генерация картинок через Cloudflare Workers AI
 - Google Sheets, DeepL, Serilog
 - Эмбеддинги ачивок: ONNX Runtime (`multilingual-e5-small`), сейчас выключены флагом
-- Docker-образ Debian slim и xUnit-тесты в соседнем решении
+- Docker (Debian slim) и xUnit-тесты в `AbsoluteBotTests`
 
 ## Запуск
 
 Нужен SDK .NET 8. Корень данных — каталог с `config.json`. Его задаёт переменная `ABSOLUTEBOT_DATA_ROOT`. Если переменная пустая или путь не существует, бот берёт текущую директорию.
 
-Скопируйте [config.example.json](config.example.json) в каталог данных как `config.json` и заполните ключи тех платформ, которые нужны. Пустые ключи просто оставляют платформу выключенной. Локально этот каталог — `../BeginData`.
+Скопируйте [BeginData/config.example.json](BeginData/config.example.json) в `BeginData/config.json` и заполните ключи тех платформ, которые нужны. Пустые ключи просто оставляют платформу выключенной.
 
 ```powershell
-$env:ABSOLUTEBOT_DATA_ROOT = (Resolve-Path ..\BeginData)
-dotnet run
+$env:ABSOLUTEBOT_DATA_ROOT = (Resolve-Path .\BeginData)
+dotnet run --project AbsoluteBot\AbsoluteBot.csproj
 ```
 
 ```bash
-export ABSOLUTEBOT_DATA_ROOT="$(cd .. && pwd)/BeginData"
-dotnet run
+export ABSOLUTEBOT_DATA_ROOT="$(pwd)/BeginData"
+dotnet run --project AbsoluteBot/AbsoluteBot.csproj
 ```
 
-Docker лежит на уровень выше клона: оттуда `Dockerfile` копирует эту папку как `AbsoluteBot/`. Каталог данных задаётся `ABS_DATA_DIR`, по умолчанию `./data`, и монтируется в `/app`. Порт 5000.
+`Dockerfile` собирает проект из каталога `AbsoluteBot/`. Каталог данных задаётся `ABS_DATA_DIR`, по умолчанию `./data`, и монтируется в `/app`. Порт 5000.
 
 ```bash
 docker compose up --build
@@ -52,7 +52,7 @@ docker compose up --build
 
 ## Тесты
 
-Проект тестов — в решении рядом с репозиторием (`../AbsoluteBot.sln`, `../AbsoluteBotTests`). Безопасный прогон оттуда не подключается к боевым чатам и не требует VPN:
+Безопасный прогон не подключается к боевым чатам и не требует VPN:
 
 ```bash
 dotnet test AbsoluteBot.sln --settings AbsoluteBotTests/unit.runsettings
@@ -289,37 +289,33 @@ flowchart LR
 - Нет ключа внешнего API — молчит только функция, которой он нужен.
 - Модели Gemini и Groq меняются из административного канала без перезапуска.
 
-Образец ключей: [config.example.json](config.example.json). Для Google Sheets в каталог данных кладётся свой `google_sheets_credentials.json`, его в репозитории нет.
+Образец ключей: [BeginData/config.example.json](BeginData/config.example.json). Для Google Sheets в `BeginData` кладётся свой `google_sheets_credentials.json`, его в репозитории нет.
 
 ## Структура файлов
 
-Файлы лежат в корне данных (`../BeginData` локально, volume `./data` в Docker), не в этом репозитории. В репозитории публикуется только [config.example.json](config.example.json).
+Корень данных локально — `BeginData`, в Docker — volume `./data`. В репозиторий из него входят образец конфига, каталог ачивок, модели нейросети, каталоги персонажей, праздники и словари раскладки. Рабочее состояние чата остаётся только на диске.
 
-В корне данных:
+В репозитории:
 
-- `commands.json` — включена ли команда на платформе.
-- `extra_commands.json` — динамические команды.
-- `cooldowns.json` — перезарядка по платформам.
-- `neural_models.json` — провайдер и id моделей.
-- `censor_words.json` — слова для замены.
-- `holidays.json` — праздники.
-- `wisdoms.json` — цитаты для `!мудрость`.
-- `game_progress.json` — прогресс игр.
-- `gamesRates.json` — оценки чата.
-- `clips.json` — сделанные клипы.
-- `achievements.json` — каталог ачивок. На деплое копируется в volume данных.
-- `mbti_characters.json`, `sbti_characters.json` — каталоги персонажей.
-- `initialUserMessage.txt`, `initialModelMessage.txt` — промпт личности.
-- `stream_stats/stream_{N}.json` — счётчики сообщений сессии стрима.
+- [BeginData/config.example.json](BeginData/config.example.json) — ключи без значений.
+- `BeginData/neural_models.json` — провайдер и id моделей.
+- `BeginData/achievements.json` — каталог ачивок. На деплое копируется в volume данных.
+- `BeginData/mbti_characters.json`, `BeginData/sbti_characters.json` — каталоги персонажей.
+- `BeginData/holidays.json` — праздники.
+- `BeginData/en_US.dic`, `BeginData/ru_RU.dic` и файлы `.aff` — словари исправления раскладки.
+- `BeginData/vkplay_request_cookies.txt.example` — шаблон cookie без секрета.
 
-Только локально, в публикацию не входят:
+Только локально, в git не входят:
 
 - `config.json` — токены и id каналов.
 - `google_sheets_credentials.json` — ключ сервисного аккаунта Google.
 - `ChatHistory_*.json` — память диалогов.
 - `user_roles.json`, `user_birthdays.json`, `user_identities.json`.
 - `mbti_data.json`, `sbti_data.json`, `auto_translate_users.json`, `complaints.json`.
-- `vkplay_request_cookies.txt` — шаблон cookie VK Live. Образец без секрета: `vkplay_request_cookies.txt.example`.
+- `commands.json`, `extra_commands.json`, `cooldowns.json`, `wisdoms.json`, `clips.json`, `gamesRates.json`, `game_progress.json`, `censor_words.json`.
+- `initialUserMessage.txt`, `initialModelMessage.txt` — промпт личности.
+- `vkplay_request_cookies.txt` — рабочие cookie VK Live.
+- `stream_stats/` — счётчики сообщений сессии стрима.
 
 ## Заключение
 

@@ -1,0 +1,11 @@
+**/.git
+**/.vs
+**/bin
+**/obj
+**/publish
+**/logs
+**/Log
+**/Logs
+AbsoluteBotTests
+*.user
+*.suo

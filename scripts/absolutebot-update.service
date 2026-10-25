@@ -1,0 +1,18 @@
+[Unit]
+Description=AbsoluteBot update watcher (git pull + docker compose)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=UPDATE_COMPOSE_DIR=/opt/absolutebot
+Environment=UPDATE_GIT_DIR=/opt/absolutebot
+Environment=HOME=/root
+Environment=GIT_TERMINAL_PROMPT=0
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/bin/sh /opt/absolutebot/scripts/watch-update.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

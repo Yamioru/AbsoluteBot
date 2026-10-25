@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "AbsoluteBotTests": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "RUN_LIVE_AI_TESTS": "0",
+        "TEST_GOOGLE_SHEETS_ID": ""
+      }
+    }
+  }
+}

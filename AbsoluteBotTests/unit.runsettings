@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <EnvironmentVariables>
+      <RUN_LIVE_AI_TESTS>0</RUN_LIVE_AI_TESTS>
+      <TEST_GOOGLE_SHEETS_ID></TEST_GOOGLE_SHEETS_ID>
+    </EnvironmentVariables>
+    <TestCaseFilter>Trait!=RequiresVpn&amp;Trait!=LiveSheets&amp;Trait!=LiveAi&amp;Category!=Integration</TestCaseFilter>
+  </RunConfiguration>
+</RunSettings>
