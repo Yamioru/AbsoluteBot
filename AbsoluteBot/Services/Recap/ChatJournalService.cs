@@ -101,10 +101,18 @@ public sealed partial class ChatJournalService(ConfigService configService, ICen
         });
     }
 
-    public async Task<JournalLine?> LastByUserAsync(RecapSource source, string userId)
+    public async Task<JournalLine?> LastByUserAsync(RecapSource source, string userId, DateTime? notAfterUtc = null)
     {
         var rows = await ReadAsync(source, DateTime.UnixEpoch, DateTime.UtcNow.AddMinutes(1), null).ConfigureAwait(false);
-        return rows.LastOrDefault(r => string.Equals(r.UserId, userId, StringComparison.OrdinalIgnoreCase));
+        for (var i = rows.Count - 1; i >= 0; i--)
+        {
+            var row = rows[i];
+            if (!string.Equals(row.UserId, userId, StringComparison.OrdinalIgnoreCase)) continue;
+            if (notAfterUtc != null && row.AtUtc >= notAfterUtc.Value) continue;
+            return row;
+        }
+
+        return null;
     }
 
     public async Task PruneAsync(DateTime utcNow)

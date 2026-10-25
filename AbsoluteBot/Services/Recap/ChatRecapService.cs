@@ -20,6 +20,7 @@ public sealed class ChatRecapService(
     ICensorshipService censorship)
 {
     private const int RawCap = 80;
+    private static readonly TimeSpan SinceAuthorQuiet = TimeSpan.FromMinutes(30);
 
     public async Task<string> AnswerAsync(RecapParseResult parsed, string userId, int maxLength)
     {
@@ -301,7 +302,7 @@ public sealed class ChatRecapService(
 
     private async Task<RecapSelection> SelectSinceAuthorAsync(RecapSource source, string userId, DateTime nowUtc, IReadOnlyList<KnownStream> known)
     {
-        var last = await journal.LastByUserAsync(source, userId).ConfigureAwait(false);
+        var last = await journal.LastByUserAsync(source, userId, nowUtc - SinceAuthorQuiet).ConfigureAwait(false);
         var from = last?.AtUtc ?? nowUtc.AddDays(-1);
         var note = last == null;
         if (source == RecapSource.Stream)

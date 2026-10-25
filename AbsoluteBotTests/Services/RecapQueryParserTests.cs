@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AbsoluteBot.Services.MediaServices;
 using AbsoluteBot.Services.Recap;
 using AbsoluteBot.Services.UtilityServices;
@@ -183,5 +184,47 @@ public class ChatJournalTests
         {
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
+    }
+
+    [Fact]
+    public async Task LastByUser_SkipsMessagesFromTheLastHalfHour()
+    {
+        var censor = new Mock<ICensorshipService>();
+        var journal = new ChatJournalService(null!, censor.Object);
+        var root = Path.Combine(Path.GetTempPath(), "absolutebot-journal-" + Guid.NewGuid().ToString("N"));
+        journal.UseDirectory(root);
+        try
+        {
+            var now = DateTime.UtcNow;
+            var lines = new[]
+            {
+                Line("42", "давно", now.AddHours(-3)),
+                Line("42", "недавно", now.AddMinutes(-10)),
+                Line("42", "!чтобыло", now),
+                Line("7", "чужое", now.AddMinutes(-1))
+            };
+            Directory.CreateDirectory(root);
+            await File.WriteAllLinesAsync(Path.Combine(root, "telegram.jsonl"), lines);
+
+            var found = await journal.LastByUserAsync(RecapSource.Telegram, "42", now.AddMinutes(-30));
+
+            Assert.NotNull(found);
+            Assert.Equal("давно", found!.Text);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    private static string Line(string userId, string text, DateTime atUtc)
+    {
+        return JsonSerializer.Serialize(new JournalLine
+        {
+            AtUtc = atUtc,
+            Nick = "Зритель",
+            UserId = userId,
+            Text = text
+        }, new JsonSerializerOptions {PropertyNamingPolicy = JsonNamingPolicy.CamelCase});
     }
 }
