@@ -84,8 +84,12 @@ public sealed class StreamAdviceService(
         if (!geminiAsk.HasApiKeys)
             return "Не получилось спросить совет.";
 
-        var model = modelConfig.GetGeminiModel(NeuralEntities.GoogleSearch);
-        var answer = await geminiAsk.AskAsync(facts.ToString(), instruction, image, model, 0.4, true).ConfigureAwait(false);
+        var free = modelConfig.IsFreeTier();
+        var entity = free ? NeuralEntities.Ask : NeuralEntities.GoogleSearch;
+        var answer = await NeuralModelAttempts.RunAsync(
+            modelConfig.GetGeminiAttemptModels(entity),
+            entity,
+            model => geminiAsk.AskAsync(facts.ToString(), instruction, image, model, 0.4, !free)).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(answer))
             return "Не получилось получить совет.";
         return censorshipService.ApplyCensorship(answer, Math.Max(80, maxLength), false);

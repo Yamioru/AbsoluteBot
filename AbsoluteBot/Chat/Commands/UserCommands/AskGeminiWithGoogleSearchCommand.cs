@@ -9,25 +9,23 @@ namespace AbsoluteBot.Chat.Commands.UserCommands;
 /// <summary>
 /// Команда получения ответа на вопрос с помощью Gemini.
 /// </summary>
-public class AskGeminiWithGoogleSearchCommand(INeuralAskService neuralAsk) : IChatCommand, IParameterized
+public class AskGeminiWithGoogleSearchCommand(INeuralAskService neuralAsk, NeuralModelConfigService modelConfig) : IChatCommand, IParameterized
 {
     public int Priority => 2;
     public string Description => "гуглит информацию в интернете и выдаёт.";
     public string Name => "!загугли";
-    public string Parameters => "вопрос";
 
     public virtual bool CanExecute(ParsedCommand command)
     {
-        // Могут использовать не игнорируемые пользователи
-        return command.UserRole != UserRole.Ignored;
+        return command.UserRole != UserRole.Ignored && !modelConfig.IsFreeTier();
     }
 
     public async Task<string> ExecuteAsync(ParsedCommand command)
     {
         // Логирование запроса с информацией о пользователе
-        Log.Information("Gemini Google Search запрос от {Username} на платформе {Platform}: {Question}", 
-            command.Context.Username, 
-            command.Context.Platform, 
+        Log.Information("Gemini Google Search запрос от {Username} на платформе {Platform}: {Question}",
+            command.Context.Username,
+            command.Context.Platform,
             command.Parameters);
 
         const string prompt = "Загугли пожалуйста: ";
@@ -48,15 +46,11 @@ public class AskGeminiWithGoogleSearchCommand(INeuralAskService neuralAsk) : ICh
 
         // Логирование результата
         if (response != null)
-        {
             Log.Information("Gemini Google Search успешно ответил пользователю {Username}", command.Context.Username);
-        }
         else
-        {
-            Log.Warning("Gemini Google Search не смог ответить пользователю {Username} на запрос: {Question}", 
-                command.Context.Username, 
+            Log.Warning("Gemini Google Search не смог ответить пользователю {Username} на запрос: {Question}",
+                command.Context.Username,
                 command.Parameters);
-        }
 
         response ??= "Не удалось получить ответ.";
         switch (command.Context.ChatService)
@@ -68,7 +62,10 @@ public class AskGeminiWithGoogleSearchCommand(INeuralAskService neuralAsk) : ICh
                 await command.Context.ChatService.SendMessageAsync(response, command.Context).ConfigureAwait(false);
                 break;
         }
+
         command.Response = response;
         return command.Response;
     }
+
+    public string Parameters => "вопрос";
 }

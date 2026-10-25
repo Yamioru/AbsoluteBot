@@ -1,14 +1,13 @@
 ﻿using System.Text.RegularExpressions;
 using AbsoluteBot.Helpers;
 using AbsoluteBot.Models;
-using AbsoluteBot.Services;
 using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 
 namespace AbsoluteBot.Services.NeuralNetworkServices;
 #pragma warning disable IDE0028
 /// <summary>
-///     Надстройка диалогового чата: история, платформы, постобработка. Генерацию отдаёт Gemini или Groq.
+/// Надстройка диалогового чата: история, платформы, постобработка. Генерацию отдаёт Gemini или Groq.
 /// </summary>
 public partial class NeuralChatService(
     ConfigService configService,
@@ -22,6 +21,7 @@ public partial class NeuralChatService(
     private const double InitialTemperature = 0.8;
     private const int MaxGenerationAttempts = 3;
     private readonly Dictionary<string, ChatHistory> _platformChatHistories = new();
+    private readonly Dictionary<string, DateTime> _lastMessageTimes = new(); // Словарь для хранения времени последнего сообщения каждой платформы.
     private readonly SemaphoreSlim _chatAsyncSemaphore = new(1, 1);
     private string? _botName;
 
@@ -32,34 +32,9 @@ public partial class NeuralChatService(
             Log.Warning("Не удалось загрузить общее имя бота для gemini.");
         await InitializePlatformChatHistories().ConfigureAwait(false);
     }
-    private readonly Dictionary<string, DateTime> _lastMessageTimes = new(); // Словарь для хранения времени последнего сообщения каждой платформы.
 
     /// <summary>
-    ///     Проверка времени последнего сообщения для указанной платформы.
-    /// </summary>
-    /// <param name="platform">Название платформы.</param>
-    /// <returns>Задача для выполнения проверки.</returns>
-    private async Task CheckLastMessageTimeAsync(string platform)
-    {
-        if (_lastMessageTimes.TryGetValue(platform, out var lastMessageTime))
-        {
-            var timeSinceLastMessage = DateTime.UtcNow - lastMessageTime;
-
-            if (timeSinceLastMessage.TotalHours > 6)
-            {
-                var message = $"Прошло {Math.Floor(timeSinceLastMessage.TotalHours)} часов. Возможно прошлая тема беседы уже не актуальна и её не стоит вспоминать.";
-                await _platformChatHistories[platform].AddMessageAsync(UserGeminiName, $"System: {message}", platform).ConfigureAwait(false);
-            }
-        }
-        else
-        {
-            // Если платформа еще не зарегистрирована, добавляем текущую метку времени.
-            _lastMessageTimes[platform] = DateTime.UtcNow;
-        }
-    }
-
-    /// <summary>
-    ///     Добавление сообщения пользователя в историю чата для всех платформ.
+    /// Добавление сообщения пользователя в историю чата для всех платформ.
     /// </summary>
     /// <param name="message">Сообщение пользователя.</param>
     /// <param name="user">Имя пользователя.</param>
@@ -80,7 +55,7 @@ public partial class NeuralChatService(
     }
 
     /// <summary>
-    ///     Добавление сообщения пользователя в историю чата для выбранной платформы.
+    /// Добавление сообщения пользователя в историю чата для выбранной платформы.
     /// </summary>
     /// <param name="message">Сообщение пользователя.</param>
     /// <param name="user">Имя пользователя.</param>
@@ -103,14 +78,14 @@ public partial class NeuralChatService(
     }
 
     /// <summary>
-    ///     Асинхронное общение с ботом для заданной платформы с учетом сообщения пользователя.
+    /// Асинхронное общение с ботом для заданной платформы с учетом сообщения пользователя.
     /// </summary>
     /// <param name="userMessage">Сообщение пользователя.</param>
     /// <param name="replyInfo">Информация о сообщении на которое был дан ответ пользователем (если имеется).</param>
     /// <param name="platform">Платформа для общения (например, Discord, Telegram).</param>
     /// <param name="base64Image">
-    ///     Строка, представляющая изображение в формате Base64. Если не указана, отправляется
-    ///     только текст.
+    /// Строка, представляющая изображение в формате Base64. Если не указана, отправляется
+    /// только текст.
     /// </param>
     /// <returns>Ответ от модели или null в случае ошибки.</returns>
     public virtual async Task<string?> ChatAsync(string userMessage, ReplyInfo? replyInfo, string platform, string? base64Image = null)
@@ -138,7 +113,7 @@ public partial class NeuralChatService(
     }
 
     /// <summary>
-    ///     Асинхронное общение с ботом на основе нескольких сообщений для заданной платформы.
+    /// Асинхронное общение с ботом на основе нескольких сообщений для заданной платформы.
     /// </summary>
     /// <param name="userMessages">Коллекция сообщений пользователя.</param>
     /// <param name="platform">Платформа для общения (например, Discord, Telegram).</param>
@@ -167,7 +142,7 @@ public partial class NeuralChatService(
     }
 
     /// <summary>
-    ///     Очистка истории чата для указанной платформы, кроме первых двух сообщений.
+    /// Очистка истории чата для указанной платформы, кроме первых двух сообщений.
     /// </summary>
     /// <param name="platform">Название платформы (например, Discord, Telegram).</param>
     /// <returns>True, если история успешно очищена, иначе false.</returns>
@@ -186,18 +161,63 @@ public partial class NeuralChatService(
         }
     }
 
+    /// <summary>
+    /// Создание замен для слов в промпте
+    /// </summary>
+    /// <param name="platform">Платформа, для которой генерируется ответ.</param>
+    /// <returns></returns>
+    private async Task<Dictionary<string, string>> BuildReplacements(string platform)
+    {
+        var streamWasOnline = await configService.GetConfigValueAsync<bool>("StreamWasOnline").ConfigureAwait(false);
+        var gameName = await configService.GetConfigValueAsync<string>("LastGameName").ConfigureAwait(false);
+        var news = await configService.GetConfigValueAsync<string>("News").ConfigureAwait(false);
+        return new Dictionary<string, string>
+        {
+            ["Date"] = DateTime.Now.ToString("yyyy-MM-dd"),
+            ["StreamState"] = streamWasOnline ? "Включен" : "Выключен",
+            ["LastGameName"] = gameName ?? "Не найдена",
+            ["Platform"] = platform,
+            ["News"] = news ?? "Новостей нет"
+        };
+    }
+
+    /// <summary>
+    /// Проверка времени последнего сообщения для указанной платформы.
+    /// </summary>
+    /// <param name="platform">Название платформы.</param>
+    /// <returns>Задача для выполнения проверки.</returns>
+    private async Task CheckLastMessageTimeAsync(string platform)
+    {
+        if (_lastMessageTimes.TryGetValue(platform, out var lastMessageTime))
+        {
+            var timeSinceLastMessage = DateTime.UtcNow - lastMessageTime;
+
+            if (timeSinceLastMessage.TotalHours > 6)
+            {
+                var message =
+                    $"Прошло {Math.Floor(timeSinceLastMessage.TotalHours)} часов. Возможно прошлая тема беседы уже не актуальна и её не стоит вспоминать.";
+                await _platformChatHistories[platform].AddMessageAsync(UserGeminiName, $"System: {message}", platform).ConfigureAwait(false);
+            }
+        }
+        else
+        {
+            // Если платформа еще не зарегистрирована, добавляем текущую метку времени.
+            _lastMessageTimes[platform] = DateTime.UtcNow;
+        }
+    }
+
     [GeneratedRegex("<<(.*?)>>")]
     private static partial Regex CommandExpressionRegex();
 
     /// <summary>
-    ///     Выполняет указанную асинхронную задачу с использованием семафора для предотвращения одновременного выполнения.
+    /// Выполняет указанную асинхронную задачу с использованием семафора для предотвращения одновременного выполнения.
     /// </summary>
     /// <typeparam name="T">Тип результата, который возвращает выполняемая задача.</typeparam>
     /// <param name="action">Функция, представляющая асинхронную задачу, которая будет выполнена.</param>
     /// <returns>Результат выполнения задачи или значение по умолчанию для типа T в случае ошибки.</returns>
     /// <remarks>
-    ///     Метод гарантирует, что задача будет выполнена с блокировкой семафора для предотвращения одновременных вызовов.
-    ///     Если возникает исключение, оно логируется, и возвращается значение по умолчанию.
+    /// Метод гарантирует, что задача будет выполнена с блокировкой семафора для предотвращения одновременных вызовов.
+    /// Если возникает исключение, оно логируется, и возвращается значение по умолчанию.
     /// </remarks>
     private async Task<T?> ExecuteWithSemaphoreAsync<T>(Func<Task<T>> action)
     {
@@ -226,28 +246,7 @@ public partial class NeuralChatService(
     private static partial Regex ExtraSpacesRegex();
 
     /// <summary>
-    /// Создание замен для слов в промпте
-    /// </summary>
-    /// <param name="platform">Платформа, для которой генерируется ответ.</param>
-    /// <returns></returns>
-    private async Task<Dictionary<string, string>> BuildReplacements(string platform)
-    {
-        var streamWasOnline = await configService.GetConfigValueAsync<bool>("StreamWasOnline").ConfigureAwait(false);
-        var gameName = await configService.GetConfigValueAsync<string>("LastGameName").ConfigureAwait(false);
-        var news = await configService.GetConfigValueAsync<string>("News").ConfigureAwait(false);
-        return new Dictionary<string, string>
-        {
-            ["Date"] = DateTime.Now.ToString("yyyy-MM-dd"),
-            ["StreamState"] = streamWasOnline ? "Включен" : "Выключен",
-            ["LastGameName"] = gameName ?? "Не найдена",
-            ["Platform"] = platform,
-            ["News"] = news ?? "Новостей нет" 
-        };
-    }
-
-
-    /// <summary>
-    ///     Генерация ответа модели на основе текущей истории чата для платформы.
+    /// Генерация ответа модели на основе текущей истории чата для платформы.
     /// </summary>
     /// <param name="temperature">Параметр температуры для генерации (влияет на креативность ответа).</param>
     /// <param name="platform">Платформа, для которой генерируется ответ.</param>
@@ -256,18 +255,20 @@ public partial class NeuralChatService(
     {
         var chatHistory = await GetChatHistoryForPlatformAsync(platform).ConfigureAwait(false);
         var replacements = await BuildReplacements(platform).ConfigureAwait(false);
-        var model = modelConfig.GetModel(NeuralEntities.Chat);
+        var models = modelConfig.GetAttemptModels(NeuralEntities.Chat);
 
         if (string.Equals(modelConfig.GetProvider(), NeuralProviders.Groq, StringComparison.OrdinalIgnoreCase))
-            return await groqService.CompleteAsync(chatHistory.ToGroqMessages(replacements), model, temperature)
+            return await NeuralModelAttempts.RunAsync(models, NeuralEntities.Chat,
+                    model => groqService.CompleteAsync(chatHistory.ToGroqMessages(replacements), model, temperature))
                 .ConfigureAwait(false);
 
-        return await geminiChat.CompleteAsync(chatHistory, replacements, temperature, model, MaxOutputTokens)
+        return await NeuralModelAttempts.RunAsync(models, NeuralEntities.Chat,
+                model => geminiChat.CompleteAsync(chatHistory, replacements, temperature, model, MaxOutputTokens))
             .ConfigureAwait(false);
     }
 
     /// <summary>
-    ///     Генерирует ответ от модели Gemini для текущей платформы на основе истории чата.
+    /// Генерирует ответ от модели Gemini для текущей платформы на основе истории чата.
     /// </summary>
     /// <param name="platform">Платформа, с которой пришло сообщение.</param>
     /// <param name="chatHistory">История чата для текущей платформы.</param>
@@ -304,7 +305,7 @@ public partial class NeuralChatService(
     }
 
     /// <summary>
-    ///     Получение истории чата для указанной платформы, если она уже существует, или загрузка начальных сообщений.
+    /// Получение истории чата для указанной платформы, если она уже существует, или загрузка начальных сообщений.
     /// </summary>
     /// <param name="platform">Название платформы (например, Discord, Telegram).</param>
     /// <returns>История чата для платформы.</returns>
@@ -321,7 +322,7 @@ public partial class NeuralChatService(
     }
 
     /// <summary>
-    ///     Асинхронная обработка дублирующегося сообщения в истории чата и корректировка параметров генерации.
+    /// Асинхронная обработка дублирующегося сообщения в истории чата и корректировка параметров генерации.
     /// </summary>
     /// <param name="chatHistory">История чата платформы.</param>
     /// <param name="result">Сгенерированный ответ модели.</param>
@@ -349,11 +350,11 @@ public partial class NeuralChatService(
     }
 
     /// <summary>
-    ///     Асинхронная обработка информации о сообщении на которое дал ответ пользователь для добавления в историю чата.
+    /// Асинхронная обработка информации о сообщении на которое дал ответ пользователь для добавления в историю чата.
     /// </summary>
     /// <param name="replyInfo">
-    ///     Информация о о сообщении на которое дал ответ пользователь, включающая пользователя и
-    ///     сообщение.
+    /// Информация о о сообщении на которое дал ответ пользователь, включающая пользователя и
+    /// сообщение.
     /// </param>
     /// <param name="chatHistory">История чата, в которую добавляется это сообщение.</param>
     /// <param name="platform">Название платформы, на которой идет общение.</param>
@@ -371,11 +372,11 @@ public partial class NeuralChatService(
     }
 
     /// <summary>
-    ///     Инициализирует историю чатов для каждой платформы, загружая начальные сообщения из файлов.
+    /// Инициализирует историю чатов для каждой платформы, загружая начальные сообщения из файлов.
     /// </summary>
     /// <remarks>
-    ///     Метод создает объекты истории чатов для указанных платформ и загружает для каждой платформы
-    ///     начальные сообщения из файлов с помощью асинхронного вызова.
+    /// Метод создает объекты истории чатов для указанных платформ и загружает для каждой платформы
+    /// начальные сообщения из файлов с помощью асинхронного вызова.
     /// </remarks>
     private async Task InitializePlatformChatHistories()
     {
@@ -383,13 +384,15 @@ public partial class NeuralChatService(
         foreach (var platform in platforms)
         {
             var chatHistory = new ChatHistory();
-            await chatHistory.LoadInitialMessagesFromFileAsync(DataPaths.Get("initialUserMessage.txt"), DataPaths.Get("initialModelMessage.txt"), platform).ConfigureAwait(false);
+            await chatHistory
+                .LoadInitialMessagesFromFileAsync(DataPaths.Get("initialUserMessage.txt"), DataPaths.Get("initialModelMessage.txt"), platform)
+                .ConfigureAwait(false);
             _platformChatHistories[platform] = chatHistory;
         }
     }
 
     /// <summary>
-    ///     Постобработка сообщения: удаление повторяющихся частей, смайлов и лишних пробелов.
+    /// Постобработка сообщения: удаление повторяющихся частей, смайлов и лишних пробелов.
     /// </summary>
     /// <param name="message">Исходное сообщение для постобработки.</param>
     /// <returns>Постобработанное сообщение.</returns>
@@ -402,6 +405,7 @@ public partial class NeuralChatService(
             var pattern = $@"^({Regex.Escape(_botName)}:\s*)+";
             message = Regex.Replace(message, pattern, "", RegexOptions.IgnoreCase).Trim();
         }
+
         // Удаление описания действий
         const string removeStars = @"\*.*?\*";
         message = Regex.Replace(message, removeStars, "");
@@ -414,7 +418,7 @@ public partial class NeuralChatService(
     }
 
     /// <summary>
-    ///     Предобработка сообщения: удаление ненужных символов и приведение первой буквы к верхнему регистру.
+    /// Предобработка сообщения: удаление ненужных символов и приведение первой буквы к верхнему регистру.
     /// </summary>
     /// <param name="message">Исходное сообщение для предобработки.</param>
     /// <returns>Предобработанное сообщение.</returns>
@@ -433,7 +437,7 @@ public partial class NeuralChatService(
     private static partial Regex RuEnSpaceSignsRegex();
 
     /// <summary>
-    ///     Метод для извлечения первого выражения команды вида &lt;&lt;!команда текст&gt;&gt; из строки, если оно есть
+    /// Метод для извлечения первого выражения команды вида &lt;&lt;!команда текст&gt;&gt; из строки, если оно есть
     /// </summary>
     /// <param name="input">Исходный текст</param>
     /// <returns>Команда, если она есть, если нет изначальный текст</returns>

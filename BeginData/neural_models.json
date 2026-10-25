@@ -1,14 +1,32 @@
 {
   "provider": "gemini",
+  "tier": "free",
   "gemini": {
-    "Chat": "gemini-3.5-flash",
-    "Ask": "gemini-3.1-flash-lite",
-    "GoogleSearch": "gemini-3.5-flash",
-    "Image": "gemini-3-pro-image-preview"
+    "Chat": {
+      "model": "gemini-3.8-flash",
+      "fallback": "gemini-3.5-flash-lite"
+    },
+    "Ask": {
+      "model": "gemini-3.8-flash",
+      "fallback": "gemini-3.5-flash-lite"
+    },
+    "GoogleSearch": {
+      "model": "gemini-3.8-flash",
+      "fallback": "gemini-3.5-flash-lite"
+    },
+    "Image": {
+      "model": "gemini-3-pro-image-preview"
+    }
   },
   "groq": {
-    "Chat": "openai/gpt-oss-20b",
-    "Ask": "openai/gpt-oss-20b",
-    "GoogleSearch": "groq/compound"
+    "Chat": {
+      "model": "openai/gpt-oss-20b"
+    },
+    "Ask": {
+      "model": "openai/gpt-oss-20b"
+    },
+    "GoogleSearch": {
+      "model": "groq/compound"
+    }
   }
 }

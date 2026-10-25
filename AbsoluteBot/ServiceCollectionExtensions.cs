@@ -67,6 +67,7 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IChatCommand, ShowAllConfigCommand>()
             .AddSingleton<IChatCommand, ShowModelsCommand>()
             .AddSingleton<IChatCommand, SwitchAiCommand>()
+            .AddSingleton<IChatCommand, ApiModeCommand>()
             .AddSingleton<IChatCommand, ShowCensorWordsCommand>()
             .AddSingleton<IChatCommand, ShowCommandStatusesCommand>()
             .AddSingleton<IChatCommand, ShowComplaintsCommand>()

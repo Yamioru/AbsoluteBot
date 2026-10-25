@@ -5,9 +5,9 @@ using Serilog;
 namespace AbsoluteBot.Services.NeuralNetworkServices;
 
 /// <summary>
-///     Устаревший сервис генерации/правки картинок через Gemini.
-///     Живая команда <c>!нарисуй</c> использует <see cref="CloudflareFluxImageService"/>.
-///     Оставлен на случай, если Google снова откроет image API на бесплатных ключах.
+/// Устаревший сервис генерации/правки картинок через Gemini.
+/// Живая команда <c>!нарисуй</c> использует <see cref="CloudflareFluxImageService" />.
+/// Оставлен на случай, если Google снова откроет image API на бесплатных ключах.
 /// </summary>
 [Obsolete("Живая команда !нарисуй идёт через CloudflareFluxImageService. Оставлен как запасной путь для Gemini image API.")]
 public class GeminiImageGenerationService(
@@ -32,31 +32,37 @@ public class GeminiImageGenerationService(
             // Немного «подсказки» модели на русском оставим как у вас
             var prompt = "Создай пожалуйста изображение " + message;
 
-            foreach (var apiKey in settingsProvider.ApiKeys)
+            var models = modelConfig.GetGeminiAttemptModels(NeuralEntities.Image);
+            for (var modelIndex = 0; modelIndex < models.Count; modelIndex++)
             {
-                var model = modelConfig.GetModel(NeuralEntities.Image);
-                var url = $"{GeminiSettingsProvider.BaseApiUrl}/{model}:generateContent";
-
-                var jsonData = GenerateJsonPayload(prompt, base64Image);
-
-                using var req = new HttpRequestMessage(HttpMethod.Post, url);
-                req.Headers.Add("x-goog-api-key", apiKey);
-                req.Content = new StringContent(jsonData, Encoding.UTF8, "application/json");
-
-                using var resp = await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
-                if (!resp.IsSuccessStatusCode)
+                var model = models[modelIndex];
+                foreach (var apiKey in settingsProvider.ApiKeys)
                 {
-                    var errorBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    Log.Warning("Gemini API returned {Status} for key tail=...{Tail}: {Body}",
-                        (int) resp.StatusCode, apiKey[^4..], errorBody.Length <= 500 ? errorBody : errorBody[..500] + "...");
-                    continue;
+                    var url = $"{GeminiSettingsProvider.BaseApiUrl}/{model}:generateContent";
+                    var jsonData = GenerateJsonPayload(prompt, base64Image);
+
+                    using var req = new HttpRequestMessage(HttpMethod.Post, url);
+                    req.Headers.Add("x-goog-api-key", apiKey);
+                    req.Content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+
+                    using var resp = await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                    if (!resp.IsSuccessStatusCode)
+                    {
+                        var errorBody = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        Log.Warning("Gemini API returned {Status} for key tail=...{Tail}: {Body}",
+                            (int) resp.StatusCode, apiKey[^4..], errorBody.Length <= 500 ? errorBody : errorBody[..500] + "...");
+                        continue;
+                    }
+
+                    using var stream = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                    var (text, image) = await ProcessImageStreamAsync(stream).ConfigureAwait(false);
+                    if (!string.IsNullOrEmpty(image))
+                        return (text, image);
                 }
 
-                using var stream = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                var (text, image) = await ProcessImageStreamAsync(stream).ConfigureAwait(false);
-
-                if (!string.IsNullOrEmpty(image))
-                    return (text, image);
+                if (modelIndex + 1 < models.Count)
+                    Log.Warning("Модель {Model} для {Entity} не ответила, пробую замену {Fallback}.",
+                        model, NeuralEntities.Image, models[modelIndex + 1]);
             }
 
             return (null, null);

@@ -8,9 +8,10 @@ using Moq;
 
 namespace AbsoluteBotTests.Commands.User;
 
+[Collection("BeginData")]
 [Trait("Category", "Unit")]
 [Trait("Area", "Commands")]
-public class AskAndDefinitionCommandTests
+public class AskAndDefinitionCommandTests(BeginDataFixture fixture)
 {
     [Theory]
     [InlineData(UserRole.Default, true)]
@@ -19,14 +20,6 @@ public class AskAndDefinitionCommandTests
     {
         var cmd = new AskCommand(CommandTestMocks.CreateChatGptMock().Object);
         Assert.Equal(expected, cmd.CanExecute(ChatContextFactory.CreateParsed(cmd.Name, role: role)));
-    }
-
-    [Fact]
-    public async Task Ask_MissingParameters_ReturnsUsage()
-    {
-        var cmd = new AskCommand(CommandTestMocks.CreateChatGptMock().Object);
-        var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name, ""));
-        Assert.Contains("Использование", result);
     }
 
     [Fact]
@@ -41,6 +34,14 @@ public class AskAndDefinitionCommandTests
         Assert.Equal("ответ", result);
     }
 
+    [Fact]
+    public async Task Ask_MissingParameters_ReturnsUsage()
+    {
+        var cmd = new AskCommand(CommandTestMocks.CreateChatGptMock().Object);
+        var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name));
+        Assert.Contains("Использование", result);
+    }
+
     [Theory]
     [InlineData(UserRole.Default, true)]
     [InlineData(UserRole.Ignored, false)]
@@ -48,14 +49,6 @@ public class AskAndDefinitionCommandTests
     {
         var cmd = new AskGeminiCommand(CommandTestMocks.CreateAskGeminiMock().Object);
         Assert.Equal(expected, cmd.CanExecute(ChatContextFactory.CreateParsed(cmd.Name, role: role)));
-    }
-
-    [Fact]
-    public async Task AskGemini_MissingParameters_ReturnsUsage()
-    {
-        var cmd = new AskGeminiCommand(CommandTestMocks.CreateAskGeminiMock().Object);
-        var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name, ""));
-        Assert.Contains("Использование", result);
     }
 
     [Fact]
@@ -71,22 +64,48 @@ public class AskAndDefinitionCommandTests
         Assert.Equal("ответ gemini", result);
     }
 
+    [Fact]
+    public async Task AskGemini_MissingParameters_ReturnsUsage()
+    {
+        var cmd = new AskGeminiCommand(CommandTestMocks.CreateAskGeminiMock().Object);
+        var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name));
+        Assert.Contains("Использование", result);
+    }
+
     [Theory]
     [InlineData(UserRole.Default, true)]
     [InlineData(UserRole.Ignored, false)]
-    public void AskGeminiGoogle_CanExecute_ByRole(UserRole role, bool expected)
+    public async Task AskGeminiGoogle_CanExecute_ByRole_WhenPaid(UserRole role, bool expected)
     {
-        var cmd = new AskGeminiWithGoogleSearchCommand(CommandTestMocks.CreateAskGeminiMock().Object);
+        _ = fixture;
+        var models = new NeuralModelConfigService();
+        await models.InitializeAsync();
+        await models.SetTierAsync(NeuralTiers.Paid);
+        var cmd = new AskGeminiWithGoogleSearchCommand(CommandTestMocks.CreateAskGeminiMock().Object, models);
         Assert.Equal(expected, cmd.CanExecute(ChatContextFactory.CreateParsed(cmd.Name, role: role)));
+        await models.SetTierAsync(NeuralTiers.Free);
+    }
+
+    [Fact]
+    public async Task AskGeminiGoogle_CanExecute_FalseWhenFree()
+    {
+        _ = fixture;
+        var models = new NeuralModelConfigService();
+        await models.InitializeAsync();
+        await models.SetTierAsync(NeuralTiers.Free);
+        var cmd = new AskGeminiWithGoogleSearchCommand(CommandTestMocks.CreateAskGeminiMock().Object, models);
+        Assert.False(cmd.CanExecute(ChatContextFactory.CreateParsed(cmd.Name, role: UserRole.Default)));
     }
 
     [Fact]
     public async Task AskGeminiGoogle_HappyPath()
     {
         var gemini = CommandTestMocks.CreateAskGeminiMock();
-        gemini.Setup(g => g.AskWithSearchAsync(It.Is<string>(s => s.Contains("тест")), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<double>()))
+        gemini.Setup(g => g.AskWithSearchAsync(It.Is<string>(s => s.Contains("тест")), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<string>(), It.IsAny<double>()))
             .ReturnsAsync("нашёл");
-        var cmd = new AskGeminiWithGoogleSearchCommand(gemini.Object);
+        var models = new NeuralModelConfigService();
+        var cmd = new AskGeminiWithGoogleSearchCommand(gemini.Object, models);
 
         var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name, "тест"));
 
@@ -103,14 +122,6 @@ public class AskAndDefinitionCommandTests
     }
 
     [Fact]
-    public async Task AskMailRu_MissingParameters_ReturnsUsage()
-    {
-        var cmd = new AskMailRuCommand(new Mock<MailRuAnswerService>(new HttpClient()).Object);
-        var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name, ""));
-        Assert.Contains("Использование", result);
-    }
-
-    [Fact]
     public async Task AskMailRu_HappyPath()
     {
         var mail = new Mock<MailRuAnswerService>(new HttpClient());
@@ -120,6 +131,14 @@ public class AskAndDefinitionCommandTests
         var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name, "как дела"));
 
         Assert.Equal("нормально", result);
+    }
+
+    [Fact]
+    public async Task AskMailRu_MissingParameters_ReturnsUsage()
+    {
+        var cmd = new AskMailRuCommand(new Mock<MailRuAnswerService>(new HttpClient()).Object);
+        var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name));
+        Assert.Contains("Использование", result);
     }
 
     [Theory]
@@ -133,15 +152,6 @@ public class AskAndDefinitionCommandTests
     }
 
     [Fact]
-    public async Task Definition_MissingParameters_ReturnsUsage()
-    {
-        var google = new Mock<IGoogleSearchDefinitionService>();
-        var cmd = new DefinitionCommand(google.Object, CommandTestMocks.CreateAskGeminiMock().Object);
-        var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name, ""));
-        Assert.Contains("Использование", result);
-    }
-
-    [Fact]
     public async Task Definition_HappyPath()
     {
         var google = new Mock<IGoogleSearchDefinitionService>();
@@ -151,5 +161,14 @@ public class AskAndDefinitionCommandTests
         var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name, "кот"));
 
         Assert.Equal("животное", result);
+    }
+
+    [Fact]
+    public async Task Definition_MissingParameters_ReturnsUsage()
+    {
+        var google = new Mock<IGoogleSearchDefinitionService>();
+        var cmd = new DefinitionCommand(google.Object, CommandTestMocks.CreateAskGeminiMock().Object);
+        var result = await cmd.ExecuteAsync(ChatContextFactory.CreateParsed(cmd.Name));
+        Assert.Contains("Использование", result);
     }
 }

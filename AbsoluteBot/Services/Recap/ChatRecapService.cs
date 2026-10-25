@@ -99,12 +99,12 @@ public sealed class ChatRecapService(
         var body = string.Join('\n', lines.Take(RawCap).Select(l => $"{l.Nick}: {l.Text}"));
         string? summary = null;
         if (geminiAsk.HasApiKeys)
-        {
-            var model = modelConfig.GetGeminiModel(NeuralEntities.Ask);
-            summary = await geminiAsk.AskAsync(body,
-                "Сожми темы этого дня в 3–5 предложений. Ники оставляй как в тексте. Не выдумывай.",
-                null, model, 0.2, false).ConfigureAwait(false);
-        }
+            summary = await NeuralModelAttempts.RunAsync(
+                modelConfig.GetGeminiAttemptModels(NeuralEntities.Ask),
+                NeuralEntities.Ask,
+                model => geminiAsk.AskAsync(body,
+                    "Сожми темы этого дня в 3–5 предложений. Ники оставляй как в тексте. Не выдумывай.",
+                    null, model, 0.2, false)).ConfigureAwait(false);
 
         summary = string.IsNullOrWhiteSpace(summary) ? Trim(body, 500) : summary.Trim();
         await journal.WriteDigestAsync(source, day, summary).ConfigureAwait(false);
@@ -211,8 +211,10 @@ public sealed class ChatRecapService(
             "Перескажи по-русски только то, что есть во входе. User_N — метки, не имена: не произноси их и не выдумывай ники, говори «один из зрителей» или «в чате». " +
             "Подстрой текст под число игр: ноль, одна или несколько. Не добавляй тем, которых нет. Если про чат ничего не передано, расскажи только игры и не пиши, что чат не записан. " +
             $"Уложись в {maxLength} символов. Без markdown.";
-        var model = modelConfig.GetGeminiModel(NeuralEntities.Ask);
-        var text = await geminiAsk.AskAsync(prompt, instruction, null, model, 0.4, false).ConfigureAwait(false);
+        var text = await NeuralModelAttempts.RunAsync(
+            modelConfig.GetGeminiAttemptModels(NeuralEntities.Ask),
+            NeuralEntities.Ask,
+            model => geminiAsk.AskAsync(prompt, instruction, null, model, 0.4, false)).ConfigureAwait(false);
         return string.IsNullOrWhiteSpace(text) ? Fallback(selection) : text.Trim();
     }
 
