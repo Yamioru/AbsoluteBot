@@ -39,7 +39,7 @@ public class GeminiAskClient(GeminiSettingsProvider settingsProvider)
 
                 if (fetched.HighDemand)
                 {
-                    Log.Warning("Модель {Model} перегружена, остальные ключи этой модели пропускаю.", model);
+                    GeminiDemandCooldown.Note(model);
                     return null;
                 }
 

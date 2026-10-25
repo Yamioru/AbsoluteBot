@@ -563,6 +563,7 @@ public static class NeuralModelAttempts
 {
     public static async Task<string?> RunAsync(IReadOnlyList<string> models, string entity, Func<string, Task<string?>> call)
     {
+        models = GeminiDemandCooldown.PreferAvailable(models);
         for (var i = 0; i < models.Count; i++)
         {
             var text = await call(models[i]).ConfigureAwait(false);

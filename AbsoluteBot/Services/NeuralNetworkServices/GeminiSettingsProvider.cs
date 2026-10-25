@@ -12,12 +12,10 @@ namespace AbsoluteBot.Services.NeuralNetworkServices;
 public class GeminiSettingsProvider(ConfigService configService, HttpClient httpClient) : IAsyncInitializable
 {
     public const string BaseApiUrl = "https://generativelanguage.googleapis.com/v1beta/models";
-    public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
     public List<string>? ApiKeys;
 
     public async Task InitializeAsync()
     {
-        httpClient.Timeout = RequestTimeout;
         ApiKeys = await configService.GetConfigValueAsync<List<string>>("GeminiApiKeys").ConfigureAwait(false);
         if (ApiKeys == null || ApiKeys.Count < 1)
             Log.Warning("Не удалось загрузить api ключи для gemini.");

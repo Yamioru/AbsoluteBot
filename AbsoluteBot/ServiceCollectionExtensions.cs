@@ -228,8 +228,7 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ChatGptService>())
             .AddSingleton<NeuralModelConfigService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<NeuralModelConfigService>())
-            .AddSingleton(sp => new GeminiSettingsProvider(sp.GetRequiredService<ConfigService>(),
-                new HttpClient {Timeout = GeminiSettingsProvider.RequestTimeout}))
+            .AddSingleton(sp => new GeminiSettingsProvider(sp.GetRequiredService<ConfigService>(), new HttpClient()))
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<GeminiSettingsProvider>())
             .AddSingleton(sp => new GroqChatService(sp.GetRequiredService<ConfigService>(), new HttpClient()))
             .AddSingleton<GeminiAskClient>()

@@ -38,25 +38,37 @@ public class NeuralRoutingTests(BeginDataFixture fixture)
     public async Task Ask_HighDemand_SwitchesModelBeforeNextKey()
     {
         _ = fixture;
+        GeminiDemandCooldown.Reset();
         var geminiHandler = new MockHttpMessageHandler();
         geminiHandler.EnqueueResponse(HttpStatusCode.ServiceUnavailable,
             """{"error":{"code":503,"message":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.","status":"UNAVAILABLE"}}""");
         geminiHandler.EnqueueResponse(HttpStatusCode.OK,
             """{"candidates":[{"content":{"parts":[{"text":"замена"}]}}]}""");
+        geminiHandler.EnqueueResponse(HttpStatusCode.OK,
+            """{"candidates":[{"content":{"parts":[{"text":"снова замена"}]}}]}""");
         var groqHandler = new MockHttpMessageHandler();
 
         var (service, models) = await CreateAskService(geminiHandler, groqHandler, ["key-one-aaaa", "key-two-bbbb"]);
         await models.SetProviderAsync(NeuralProviders.Gemini);
         await models.SetModelAsync(NeuralEntities.Ask, "gemini-busy", NeuralProviders.Gemini, "gemini-3.5-flash-lite", true);
+        try
+        {
+            var answer = await service.AskAsync("hi", 50);
+            var later = await service.AskAsync("ещё", 50);
 
-        var answer = await service.AskAsync("hi", 50);
-
-        Assert.Equal("замена", answer);
-        Assert.Equal(2, geminiHandler.Requests.Count);
-        Assert.Contains("gemini-busy", geminiHandler.Requests[0].RequestUri!.ToString(), StringComparison.Ordinal);
-        Assert.Contains("gemini-3.5-flash-lite", geminiHandler.Requests[1].RequestUri!.ToString(), StringComparison.Ordinal);
-
-        await models.SetModelAsync(NeuralEntities.Ask, "gemini-3.8-flash", NeuralProviders.Gemini, "gemini-3.5-flash-lite", true);
+            Assert.Equal("замена", answer);
+            Assert.Equal("снова замена", later);
+            Assert.Equal(3, geminiHandler.Requests.Count);
+            Assert.Contains("gemini-busy", geminiHandler.Requests[0].RequestUri!.ToString(), StringComparison.Ordinal);
+            Assert.Contains("gemini-3.5-flash-lite", geminiHandler.Requests[1].RequestUri!.ToString(), StringComparison.Ordinal);
+            Assert.Contains("gemini-3.5-flash-lite", geminiHandler.Requests[2].RequestUri!.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain("gemini-busy", geminiHandler.Requests[2].RequestUri!.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            GeminiDemandCooldown.Reset();
+            await models.SetModelAsync(NeuralEntities.Ask, "gemini-3.8-flash", NeuralProviders.Gemini, "gemini-3.5-flash-lite", true);
+        }
     }
 
     [Fact]
