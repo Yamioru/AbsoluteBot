@@ -10,16 +10,16 @@ services:
     - "5000:5000"
     volumes:
       - ${ABS_DATA_DIR:-./data}:/app
-    cpus: 0.75
-    mem_limit: 1000m
-    mem_reservation: 250m
+    cpus: 0.5
+    mem_limit: 512m
+    mem_reservation: 128m
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 1000M
+          cpus: "0.5"
+          memory: 512M
         reservations:
-          memory: 250M
+          memory: 128M
     logging:
       driver: json-file
       options:
