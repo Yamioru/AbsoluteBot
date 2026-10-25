@@ -179,6 +179,9 @@ public class ChatJournalTests
             Assert.Equal("Зритель", row.Nick);
             Assert.Contains("[почта]", row.Text);
             Assert.DoesNotContain("a@b.co", row.Text);
+            var raw = await File.ReadAllTextAsync(Path.Combine(root, "stream.jsonl"));
+            Assert.Contains("Зритель", raw);
+            Assert.DoesNotContain("\\u", raw);
         }
         finally
         {

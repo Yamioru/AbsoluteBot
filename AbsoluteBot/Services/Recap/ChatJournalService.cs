@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -18,6 +19,7 @@ public sealed partial class ChatJournalService(ConfigService configService, ICen
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
@@ -133,7 +135,8 @@ public sealed partial class ChatJournalService(ConfigService configService, ICen
                     try
                     {
                         var entry = JsonSerializer.Deserialize<JournalLine>(line, JsonOptions);
-                        if (entry != null && entry.AtUtc >= cutoff) kept.Add(line);
+                        if (entry != null && entry.AtUtc >= cutoff)
+                            kept.Add(JsonSerializer.Serialize(entry, JsonOptions));
                     }
                     catch (JsonException)
                     {
@@ -141,6 +144,18 @@ public sealed partial class ChatJournalService(ConfigService configService, ICen
                 }
 
                 await File.WriteAllLinesAsync(path, kept).ConfigureAwait(false);
+            }
+
+            var sessionsPath = Path.Combine(_root, "sessions.json");
+            if (File.Exists(sessionsPath))
+            {
+                var raw = await File.ReadAllTextAsync(sessionsPath).ConfigureAwait(false);
+                if (raw.Contains("\\u", StringComparison.Ordinal))
+                {
+                    var sessions = JsonSerializer.Deserialize<List<StreamSession>>(raw, JsonOptions);
+                    if (sessions != null)
+                        await File.WriteAllTextAsync(sessionsPath, JsonSerializer.Serialize(sessions, JsonOptions)).ConfigureAwait(false);
+                }
             }
         }
         finally
