@@ -33,8 +33,8 @@ public sealed class ChatRecapService(
 
         var liveNow = parsed.Window is CurrentStreamWindow && selection.Live;
         var prefix = liveNow ? string.Empty : selection.DateLine;
-        if (selection.TookLastDayBecauseNoOwnMessage)
-            prefix = "Своих сообщений ещё не было, беру последние сутки. " + prefix;
+        if (selection.TookAllHistoryBecauseNoOwnMessage)
+            prefix = "Своих сообщений ещё не было, беру за всё время. " + prefix;
 
         var room = Math.Max(80, maxLength - prefix.Length);
         var body = await NarrateAsync(selection, room).ConfigureAwait(false);
@@ -43,7 +43,7 @@ public sealed class ChatRecapService(
         foreach (var nick in selection.Nicks.OrderByDescending(n => n.Length))
         {
             if (nick.Length < 2) continue;
-            answer = Regex.Replace(answer, $@"(?<![0-9A-Za-zА-Яа-я_]){Regex.Escape(nick)}(?![0-9A-Za-zА-Яа-я_])", "зритель",
+            answer = Regex.Replace(answer, $@"(?<![0-9A-Za-zА-Яа-я_]){Regex.Escape(nick)}(?![0-9A-Za-zА-Яа-я_])", "чаттерс",
                 RegexOptions.IgnoreCase);
         }
 
@@ -209,7 +209,7 @@ public sealed class ChatRecapService(
 
         var prompt = NickMask.Apply(selection.Facts, nicks);
         var instruction =
-            "Перескажи по-русски только то, что есть во входе. User_N — метки, не имена: не произноси их и не выдумывай ники, говори «один из зрителей» или «в чате». " +
+            "Перескажи по-русски только то, что есть во входе. User_N — метки, не имена: не произноси их и не выдумывай ники, говори «один из чаттерсов» или «в чате». " +
             "Подстрой текст под число игр: ноль, одна или несколько. Не добавляй тем, которых нет. Если про чат ничего не передано, расскажи только игры и не пиши, что чат не записан. " +
             $"Уложись в {maxLength} символов. Без markdown.";
         var text = await NeuralModelAttempts.RunAsync(
@@ -302,23 +302,23 @@ public sealed class ChatRecapService(
 
     private async Task<RecapSelection> SelectSinceAuthorAsync(RecapSource source, string userId, DateTime nowUtc, IReadOnlyList<KnownStream> known)
     {
-        var last = await journal.LastByUserAsync(source, userId, nowUtc - SinceAuthorQuiet).ConfigureAwait(false);
-        var from = last?.AtUtc ?? nowUtc.AddDays(-1);
+        var last = await journal.FindSinceAuthorAnchorAsync(source, userId, nowUtc, SinceAuthorQuiet).ConfigureAwait(false);
+        var from = last?.AtUtc ?? nowUtc.AddDays(-ChatJournalService.RetentionDays);
         var note = last == null;
         if (source == RecapSource.Stream)
         {
             var selection = await SelectRangeAsync(known, new DateTimeOffset(DateTime.SpecifyKind(from, DateTimeKind.Utc)), DateTimeOffset.UtcNow)
                 .ConfigureAwait(false);
-            selection.TookLastDayBecauseNoOwnMessage = note;
+            selection.TookAllHistoryBecauseNoOwnMessage = note;
             return selection;
         }
 
         var lines = await journal.ReadAsync(source, from, nowUtc.AddMinutes(1), null).ConfigureAwait(false);
         if (lines.Count == 0)
-            return new RecapSelection {EmptyNote = "За этот срок сообщений нет.", TookLastDayBecauseNoOwnMessage = note};
+            return new RecapSelection {EmptyNote = "За этот срок сообщений нет.", TookAllHistoryBecauseNoOwnMessage = note};
         var longWindow = nowUtc - from > TimeSpan.FromHours(36);
         var selectionChat = await FromMessagesAsync(source, lines, !longWindow, string.Empty).ConfigureAwait(false);
-        selectionChat.TookLastDayBecauseNoOwnMessage = note;
+        selectionChat.TookAllHistoryBecauseNoOwnMessage = note;
         return selectionChat;
     }
 
@@ -344,7 +344,7 @@ public sealed class ChatRecapService(
     private sealed class RecapSelection
     {
         public bool Live { get; init; }
-        public bool TookLastDayBecauseNoOwnMessage { get; set; }
+        public bool TookAllHistoryBecauseNoOwnMessage { get; set; }
         public int MessageCount { get; init; }
         public List<string> GameLines { get; init; } = new();
         public List<string> Nicks { get; init; } = new();

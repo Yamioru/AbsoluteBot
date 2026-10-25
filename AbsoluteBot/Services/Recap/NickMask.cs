@@ -33,7 +33,7 @@ public static partial class NickMask
     public static string StripLabels(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
-        return UserLabel().Replace(text, "зритель");
+        return UserLabel().Replace(text, "чаттерс");
     }
 
     [GeneratedRegex(@"User_\d+", RegexOptions.IgnoreCase)]

@@ -5,7 +5,7 @@ using Serilog;
 namespace AbsoluteBot.Services.NeuralNetworkServices;
 
 /// <summary>
-///     Клиент диалоговых запросов к Gemini. Без знания о Groq.
+/// Клиент диалоговых запросов к Gemini. Без знания о Groq.
 /// </summary>
 public class GeminiChatClient(GeminiSettingsProvider settingsProvider)
 {
@@ -15,7 +15,6 @@ public class GeminiChatClient(GeminiSettingsProvider settingsProvider)
     private const string CategoryHarassment = "HARM_CATEGORY_HARASSMENT";
     private const string CategoryDangerousContent = "HARM_CATEGORY_DANGEROUS_CONTENT";
     private const string ThresholdBlockNone = "BLOCK_NONE";
-
     public bool HasApiKeys => settingsProvider.ApiKeys is {Count: > 0};
 
     public async Task<string?> CompleteAsync(ChatHistory chatHistory, Dictionary<string, string> replacements,
@@ -29,18 +28,21 @@ public class GeminiChatClient(GeminiSettingsProvider settingsProvider)
             var url = GeminiSettingsProvider.BuildGenerateContentUrl(model, apiKey);
             try
             {
-                var text = await settingsProvider.FetchModelResponseAsync(jsonData, url).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(text))
-                    return text;
+                var fetched = await settingsProvider.FetchModelResponseAsync(jsonData, url).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(fetched.Text))
+                    return fetched.Text;
+                if (fetched.HighDemand)
+                {
+                    Log.Warning("Модель {Model} перегружена, остальные ключи этой модели пропускаю.", model);
+                    return null;
+                }
             }
             catch (Exception ex)
             {
                 Log.Warning(ex, "Попытка использования API-ключа и модели {Model} завершилась неудачей.", model);
             }
-            finally
-            {
-                await Task.Delay(DelayBetweenAttempts).ConfigureAwait(false);
-            }
+
+            await Task.Delay(DelayBetweenAttempts).ConfigureAwait(false);
         }
 
         return null;

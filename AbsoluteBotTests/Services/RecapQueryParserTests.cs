@@ -118,7 +118,7 @@ public class NickMaskTests
         Assert.Contains("User_1", masked);
         Assert.Contains("User_2", masked);
         Assert.DoesNotContain("Котёнок", masked);
-        Assert.Equal("зритель молчал", NickMask.StripLabels("User_2 молчал"));
+        Assert.Equal("чаттерс молчал", NickMask.StripLabels("User_2 молчал"));
     }
 }
 
@@ -162,6 +162,37 @@ public class TwitchPlaylistTests
 public class ChatJournalTests
 {
     [Fact]
+    public async Task LastByUser_SkipsMessagesFromTheLastHalfHour()
+    {
+        var censor = new Mock<ICensorshipService>();
+        var journal = new ChatJournalService(null!, censor.Object);
+        var root = Path.Combine(Path.GetTempPath(), "absolutebot-journal-" + Guid.NewGuid().ToString("N"));
+        journal.UseDirectory(root);
+        try
+        {
+            var now = DateTime.UtcNow;
+            var lines = new[]
+            {
+                Line("42", "давно", now.AddHours(-3)),
+                Line("42", "недавно", now.AddMinutes(-10)),
+                Line("42", "!чтобыло", now),
+                Line("7", "чужое", now.AddMinutes(-1))
+            };
+            Directory.CreateDirectory(root);
+            await File.WriteAllLinesAsync(Path.Combine(root, "telegram.jsonl"), lines);
+
+            var found = await journal.FindSinceAuthorAnchorAsync(RecapSource.Telegram, "42", now, TimeSpan.FromMinutes(30));
+
+            Assert.NotNull(found);
+            Assert.Equal("давно", found!.Text);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task Record_KeepsNick_SkipsTwitchRelay_AndScrubsMail()
     {
         var censor = new Mock<ICensorshipService>();
@@ -190,29 +221,51 @@ public class ChatJournalTests
     }
 
     [Fact]
-    public async Task LastByUser_SkipsMessagesFromTheLastHalfHour()
+    public async Task SinceAuthorAnchor_CommandIsOnlyOwnMessage_HasNoAnchor()
     {
-        var censor = new Mock<ICensorshipService>();
-        var journal = new ChatJournalService(null!, censor.Object);
+        var journal = new ChatJournalService(null!, new Mock<ICensorshipService>().Object);
         var root = Path.Combine(Path.GetTempPath(), "absolutebot-journal-" + Guid.NewGuid().ToString("N"));
         journal.UseDirectory(root);
         try
         {
             var now = DateTime.UtcNow;
-            var lines = new[]
-            {
-                Line("42", "давно", now.AddHours(-3)),
-                Line("42", "недавно", now.AddMinutes(-10)),
-                Line("42", "!чтобыло", now),
-                Line("7", "чужое", now.AddMinutes(-1))
-            };
             Directory.CreateDirectory(root);
-            await File.WriteAllLinesAsync(Path.Combine(root, "telegram.jsonl"), lines);
+            await File.WriteAllLinesAsync(Path.Combine(root, "telegram.jsonl"), new[]
+            {
+                Line("7", "чужое", now.AddMinutes(-5)),
+                Line("42", "!чтобыло", now)
+            });
 
-            var found = await journal.LastByUserAsync(RecapSource.Telegram, "42", now.AddMinutes(-30));
+            var found = await journal.FindSinceAuthorAnchorAsync(RecapSource.Telegram, "42", now, TimeSpan.FromMinutes(30));
+
+            Assert.Null(found);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task SinceAuthorAnchor_FirstMessageInsideHalfHour_StartsThere()
+    {
+        var journal = new ChatJournalService(null!, new Mock<ICensorshipService>().Object);
+        var root = Path.Combine(Path.GetTempPath(), "absolutebot-journal-" + Guid.NewGuid().ToString("N"));
+        journal.UseDirectory(root);
+        try
+        {
+            var now = DateTime.UtcNow;
+            Directory.CreateDirectory(root);
+            await File.WriteAllLinesAsync(Path.Combine(root, "telegram.jsonl"), new[]
+            {
+                Line("42", "первое", now.AddMinutes(-12)),
+                Line("42", "!чтобыло", now)
+            });
+
+            var found = await journal.FindSinceAuthorAnchorAsync(RecapSource.Telegram, "42", now, TimeSpan.FromMinutes(30));
 
             Assert.NotNull(found);
-            Assert.Equal("давно", found!.Text);
+            Assert.Equal("первое", found!.Text);
         }
         finally
         {

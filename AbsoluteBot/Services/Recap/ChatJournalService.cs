@@ -103,18 +103,37 @@ public sealed partial class ChatJournalService(ConfigService configService, ICen
         });
     }
 
-    public async Task<JournalLine?> LastByUserAsync(RecapSource source, string userId, DateTime? notAfterUtc = null)
+    /// <summary>
+    /// Точка отсчёта пустого !чтобыло. Сначала самая свежая реплика автора старше <paramref name="quiet" />.
+    /// Если таких нет, а за эти полчаса есть реплики кроме только что записанной команды, берётся самая ранняя из них.
+    /// Если в журнале только сама команда, возвращается null: вызывающий берёт всю историю.
+    /// </summary>
+    public async Task<JournalLine?> FindSinceAuthorAnchorAsync(RecapSource source, string userId, DateTime nowUtc, TimeSpan quiet)
     {
         var rows = await ReadAsync(source, DateTime.UnixEpoch, DateTime.UtcNow.AddMinutes(1), null).ConfigureAwait(false);
-        for (var i = rows.Count - 1; i >= 0; i--)
+        var own = new List<JournalLine>();
+        foreach (var row in rows)
+            if (string.Equals(row.UserId, userId, StringComparison.OrdinalIgnoreCase))
+                own.Add(row);
+
+        var cutoff = nowUtc - quiet;
+        JournalLine? older = null;
+        var recentCount = 0;
+        JournalLine? earliestRecent = null;
+        foreach (var row in own)
         {
-            var row = rows[i];
-            if (!string.Equals(row.UserId, userId, StringComparison.OrdinalIgnoreCase)) continue;
-            if (notAfterUtc != null && row.AtUtc >= notAfterUtc.Value) continue;
-            return row;
+            if (row.AtUtc < cutoff)
+            {
+                older = row;
+                continue;
+            }
+
+            recentCount++;
+            earliestRecent ??= row;
         }
 
-        return null;
+        if (older != null) return older;
+        return recentCount <= 1 ? null : earliestRecent;
     }
 
     public async Task PruneAsync(DateTime utcNow)

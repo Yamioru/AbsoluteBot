@@ -6,29 +6,33 @@ using Serilog;
 namespace AbsoluteBot.Services.NeuralNetworkServices;
 
 /// <summary>
-///     Предоставляет настройки и методы для взаимодействия с моделью Gemini, включая доступ к API ключам.
-///     Использует отдельный HttpClient, чтобы чужие DefaultRequestHeaders не ломали запросы.
+/// Предоставляет настройки и методы для взаимодействия с моделью Gemini, включая доступ к API ключам.
+/// Использует отдельный HttpClient, чтобы чужие DefaultRequestHeaders не ломали запросы.
 /// </summary>
 public class GeminiSettingsProvider(ConfigService configService, HttpClient httpClient) : IAsyncInitializable
 {
     public const string BaseApiUrl = "https://generativelanguage.googleapis.com/v1beta/models";
+    public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
     public List<string>? ApiKeys;
 
     public async Task InitializeAsync()
     {
+        httpClient.Timeout = RequestTimeout;
         ApiKeys = await configService.GetConfigValueAsync<List<string>>("GeminiApiKeys").ConfigureAwait(false);
         if (ApiKeys == null || ApiKeys.Count < 1)
             Log.Warning("Не удалось загрузить api ключи для gemini.");
     }
 
     /// <summary>
-    ///     Собирает URL generateContent для модели и ключа.
+    /// Собирает URL generateContent для модели и ключа.
     /// </summary>
-    public static string BuildGenerateContentUrl(string model, string apiKey) =>
-        $"{BaseApiUrl}/{model}:generateContent?key={apiKey}";
+    public static string BuildGenerateContentUrl(string model, string apiKey)
+    {
+        return $"{BaseApiUrl}/{model}:generateContent?key={apiKey}";
+    }
 
     /// <summary>
-    ///     Отправка HTTP-запроса к модели и получение потока ответа.
+    /// Отправка HTTP-запроса к модели и получение потока ответа.
     /// </summary>
     public async Task<Stream?> FetchImageModelResponseStreamAsync(string jsonData, string url)
     {
@@ -55,9 +59,9 @@ public class GeminiSettingsProvider(ConfigService configService, HttpClient http
     }
 
     /// <summary>
-    ///     Отправка HTTP-запроса к модели и получение текста ответа.
+    /// Отправка HTTP-запроса к модели и получение текста ответа.
     /// </summary>
-    public async Task<string?> FetchModelResponseAsync(string jsonData, string url)
+    public async Task<GeminiCallResult> FetchModelResponseAsync(string jsonData, string url)
     {
         try
         {
@@ -68,20 +72,28 @@ public class GeminiSettingsProvider(ConfigService configService, HttpClient http
             if (!response.IsSuccessStatusCode)
             {
                 Log.Warning("Gemini API вернул {Status}: {Body}", (int) response.StatusCode, Truncate(result));
-                return null;
+                return new GeminiCallResult(null, IsHighDemand(result));
             }
 
-            return ParseResponse(result);
+            return new GeminiCallResult(ParseResponse(result), false);
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Ошибка при запросе к Gemini.");
-            return null;
+            return new GeminiCallResult(null, false);
         }
     }
 
     /// <summary>
-    ///     Извлечение текста ответа из JSON-ответа модели.
+    /// Модель перегружена. Другие ключи того же проекта получат тот же ответ, поэтому их не перебираем.
+    /// </summary>
+    public static bool IsHighDemand(string? body)
+    {
+        return !string.IsNullOrEmpty(body) && body.Contains("high demand", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Извлечение текста ответа из JSON-ответа модели.
     /// </summary>
     private static string? ParseResponse(string result)
     {
@@ -110,6 +122,13 @@ public class GeminiSettingsProvider(ConfigService configService, HttpClient http
         return null;
     }
 
-    private static string Truncate(string value) =>
-        value.Length <= 500 ? value : value[..500] + "...";
+    private static string Truncate(string value)
+    {
+        return value.Length <= 500 ? value : value[..500] + "...";
+    }
 }
+
+/// <summary>
+/// Текст ответа Gemini. <see cref="GeminiCallResult.HighDemand" /> — модель перегружена, ключи дальше не помогут.
+/// </summary>
+public readonly record struct GeminiCallResult(string? Text, bool HighDemand);

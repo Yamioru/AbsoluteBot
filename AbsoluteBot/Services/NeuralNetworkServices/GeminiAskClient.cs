@@ -5,7 +5,7 @@ using Serilog;
 namespace AbsoluteBot.Services.NeuralNetworkServices;
 
 /// <summary>
-///     Клиент одиночных запросов к Gemini. Без знания о Groq.
+/// Клиент одиночных запросов к Gemini. Без знания о Groq.
 /// </summary>
 public class GeminiAskClient(GeminiSettingsProvider settingsProvider)
 {
@@ -25,17 +25,22 @@ public class GeminiAskClient(GeminiSettingsProvider settingsProvider)
             temperature, enableGoogleSearch);
 
         foreach (var apiKey in settingsProvider.ApiKeys!)
-        {
             try
             {
                 var url = GeminiSettingsProvider.BuildGenerateContentUrl(model, apiKey);
-                var text = await settingsProvider.FetchModelResponseAsync(jsonData, url).ConfigureAwait(false);
+                var fetched = await settingsProvider.FetchModelResponseAsync(jsonData, url).ConfigureAwait(false);
 
-                if (!string.IsNullOrEmpty(text))
+                if (!string.IsNullOrEmpty(fetched.Text))
                 {
                     Log.Debug("Успешный запрос к Gemini с использованием API ключа (первые 10 символов): {ApiKeyPreview}...",
                         apiKey.Length > 10 ? apiKey[..10] : apiKey);
-                    return text;
+                    return fetched.Text;
+                }
+
+                if (fetched.HighDemand)
+                {
+                    Log.Warning("Модель {Model} перегружена, остальные ключи этой модели пропускаю.", model);
+                    return null;
                 }
 
                 Log.Warning("API ключ вернул пустой ответ, пробуем следующий ключ.");
@@ -45,7 +50,6 @@ public class GeminiAskClient(GeminiSettingsProvider settingsProvider)
                 Log.Warning(ex, "Ошибка при попытке запроса с API ключом (первые 10 символов): {ApiKeyPreview}..., пробуем следующий ключ.",
                     apiKey.Length > 10 ? apiKey[..10] : apiKey);
             }
-        }
 
         Log.Error("Все API ключи Gemini ({KeyCount} шт.) не смогли обработать запрос.", settingsProvider.ApiKeys.Count);
         return null;
