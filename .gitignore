@@ -364,3 +364,17 @@ FodyWeavers.xsd
 
 # VK Live request cookies (лежат в data-root, не в исходниках)
 vkplay_request_cookies.txt
+
+# Секреты и персональные данные, если окажутся в каталоге проекта
+config.json
+google_sheets_credentials.json
+ChatHistory_*.json
+user_birthdays.json
+user_roles.json
+user_identities.json
+mbti_data.json
+sbti_data.json
+auto_translate_users.json
+complaints.json
+github.env
+update.requested
