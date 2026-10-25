@@ -16,21 +16,21 @@ using AbsoluteBot.Services.GoogleSearch;
 using AbsoluteBot.Services.GoogleSheetsServices;
 using AbsoluteBot.Services.MediaServices;
 using AbsoluteBot.Services.NeuralNetworkServices;
+using AbsoluteBot.Services.Recap;
 using AbsoluteBot.Services.ScheduledTasks;
 using AbsoluteBot.Services.TextChat;
 using AbsoluteBot.Services.UserManagementServices;
 using AbsoluteBot.Services.UtilityServices;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace AbsoluteBot;
 
 /// <summary>
-///     Статический класс, содержащий методы расширения для регистрации сервисов в <see cref="IServiceCollection" />.
+/// Статический класс, содержащий методы расширения для регистрации сервисов в <see cref="IServiceCollection" />.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    ///     Настройка HttpClient для сервисов, которые его используют.
+    /// Настройка HttpClient для сервисов, которые его используют.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными HttpClient сервисами.</returns>
@@ -42,7 +42,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация административных команд чата.
+    /// Регистрация административных команд чата.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с зарегистрированными командами чата.</returns>
@@ -75,7 +75,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация платформенных сервисов для приложения.
+    /// Регистрация платформенных сервисов для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -114,7 +114,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация сервисов команд для приложения.
+    /// Регистрация сервисов команд для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -134,7 +134,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация команд чата, реализующих интерфейс <see cref="IChatCommand" />.
+    /// Регистрация команд чата, реализующих интерфейс <see cref="IChatCommand" />.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с зарегистрированными командами чата.</returns>
@@ -146,7 +146,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация основных сервисов для ядра приложения.
+    /// Регистрация основных сервисов для ядра приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с зарегистрированными основными сервисами.</returns>
@@ -170,7 +170,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация Google сервисов для приложения.
+    /// Регистрация Google сервисов для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -183,7 +183,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация Google Sheets сервисов для приложения.
+    /// Регистрация Google Sheets сервисов для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -199,7 +199,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация медиа сервисов для приложения.
+    /// Регистрация медиа сервисов для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -216,7 +216,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация нейросетевых сервисов для приложения.
+    /// Регистрация нейросетевых сервисов для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -251,7 +251,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация остальных сервисов для приложения.
+    /// Регистрация остальных сервисов для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -279,6 +279,11 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<WisdomService>())
             .AddSingleton<StreamChatterStatsService>()
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<StreamChatterStatsService>())
+            .AddSingleton<ChatJournalService>()
+            .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<ChatJournalService>())
+            .AddSingleton<TwitchFrameGrabber>()
+            .AddSingleton<StreamAdviceService>()
+            .AddSingleton<ChatRecapService>()
             .AddSingleton(sp => new OnnxEmbeddingAchievementClassifier(new HttpClient {Timeout = TimeSpan.FromMinutes(8)}))
             .AddSingleton<IAchievementClassifier>(sp => sp.GetRequiredService<OnnxEmbeddingAchievementClassifier>())
             .AddSingleton<IAsyncInitializable>(sp => sp.GetRequiredService<OnnxEmbeddingAchievementClassifier>())
@@ -288,7 +293,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация таймерных сервисов для приложения.
+    /// Регистрация таймерных сервисов для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -304,7 +309,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация всех сервисов для приложения.
+    /// Регистрация всех сервисов для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -325,7 +330,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация пользовательских команд чата.
+    /// Регистрация пользовательских команд чата.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с зарегистрированными командами чата.</returns>
@@ -355,6 +360,8 @@ public static class ServiceCollectionExtensions
             .AddSingleton<IChatCommand, GifCommand>()
             .AddSingleton<IChatCommand, GoogleSearchWithNeuralNetworkCommand>()
             .AddSingleton<IChatCommand, HoroscopeCommand>()
+            .AddSingleton<IChatCommand, AdviceCommand>()
+            .AddSingleton<IChatCommand, RecapCommand>()
             .AddSingleton<IChatCommand, ImageCommand>()
             .AddSingleton<IChatCommand, SpoilerImageCommand>()
             .AddSingleton<IChatCommand, ImageGenerateCommand>()
@@ -378,7 +385,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация сервисов по управлению пользовательскими данными для приложения.
+    /// Регистрация сервисов по управлению пользовательскими данными для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>
@@ -402,7 +409,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    ///     Регистрация утилитных сервисов для приложения.
+    /// Регистрация утилитных сервисов для приложения.
     /// </summary>
     /// <param name="services">Коллекция сервисов для регистрации.</param>
     /// <returns>Коллекция сервисов с добавленными сервисами.</returns>

@@ -1,10 +1,11 @@
-﻿using Google.Apis.Sheets.v4.Data;
+﻿using System.Globalization;
+using Google.Apis.Sheets.v4.Data;
 using Serilog;
 
 namespace AbsoluteBot.Services.GoogleSheetsServices;
 #pragma warning disable IDE0028
 /// <summary>
-///     Сервис для работы с таблицей Google Sheets, которая содержит информацию о стримах.
+/// Сервис для работы с таблицей Google Sheets, которая содержит информацию о стримах.
 /// </summary>
 public class StreamGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseService)
 {
@@ -17,7 +18,7 @@ public class StreamGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseS
     private const string DateFormat = "dd.MM.yyyy";
 
     /// <summary>
-    ///     Добавляет строку для нового стрима или обновляет данные о стриме, если он уже существует.
+    /// Добавляет строку для нового стрима или обновляет данные о стриме, если он уже существует.
     /// </summary>
     /// <param name="streamNumber">Номер стрима.</param>
     /// <param name="gameName">Название игры, связанной со стримом.</param>
@@ -48,7 +49,41 @@ public class StreamGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseS
     }
 
     /// <summary>
-    ///     Вставляет новую строку для стрима в таблицу Google Sheets.
+    /// Читает дату, номер и список игр уже записанных стримов.
+    /// </summary>
+    public virtual async Task<IReadOnlyList<StreamSheetRow>> ListStreamsAsync()
+    {
+        try
+        {
+            if (googleSheetsBaseService.SheetsService == null) return Array.Empty<StreamSheetRow>();
+            var response = await googleSheetsBaseService.GetValuesAsync(
+                $"'{StreamSheetName}'!{StreamDateColumnLetter}{EndStreamRow}:{StreamGamesNameColumnLetter}").ConfigureAwait(false);
+            if (response.Values == null) return Array.Empty<StreamSheetRow>();
+            var rows = new List<StreamSheetRow>();
+            foreach (var row in response.Values)
+            {
+                if (row.Count < 2) continue;
+                if (!DateTime.TryParseExact(row[0]?.ToString(), DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+                    && !DateTime.TryParse(row[0]?.ToString(), out date))
+                    continue;
+                if (!int.TryParse(row[1]?.ToString(), out var number)) continue;
+                var games = row.Count > 2
+                    ? (row[2]?.ToString() ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    : Array.Empty<string>();
+                rows.Add(new StreamSheetRow(DateOnly.FromDateTime(date), number, games));
+            }
+
+            return rows;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Не удалось прочитать лист стримов.");
+            return Array.Empty<StreamSheetRow>();
+        }
+    }
+
+    /// <summary>
+    /// Вставляет новую строку для стрима в таблицу Google Sheets.
     /// </summary>
     /// <param name="streamNumber">Номер нового стрима.</param>
     /// <param name="gameName">Название игры, связанной с новым стримом.</param>
@@ -68,7 +103,7 @@ public class StreamGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseS
     }
 
     /// <summary>
-    ///     Проверяет наличие стрима с указанным номером в таблице Google Sheets.
+    /// Проверяет наличие стрима с указанным номером в таблице Google Sheets.
     /// </summary>
     /// <param name="streamNumber">Номер стрима для поиска.</param>
     /// <returns>Кортеж с результатом наличия стрима и номером строки, если стрим существует.</returns>
@@ -86,12 +121,12 @@ public class StreamGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseS
     }
 
     /// <summary>
-    ///     Проверяет, присутствует ли игра в списке существующих игр.
+    /// Проверяет, присутствует ли игра в списке существующих игр.
     /// </summary>
     /// <param name="existingGames">Список существующих игр, разделенный точкой с запятой.</param>
     /// <param name="newGameName">Название новой игры, которую необходимо проверить.</param>
     /// <returns>
-    ///     Возвращает <c>true</c>, если игра уже находится в списке, и <c>false</c>, если игра отсутствует.
+    /// Возвращает <c>true</c>, если игра уже находится в списке, и <c>false</c>, если игра отсутствует.
     /// </returns>
     private static bool IsGameAlreadyInList(string existingGames, string newGameName)
     {
@@ -99,7 +134,7 @@ public class StreamGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseS
     }
 
     /// <summary>
-    ///     Подготавливает список запросов для вставки новой строки стрима в таблицу Google Sheets.
+    /// Подготавливает список запросов для вставки новой строки стрима в таблицу Google Sheets.
     /// </summary>
     /// <param name="sheetId">Идентификатор листа, в который будет вставлена строка.</param>
     /// <param name="streamNumber">Номер стрима для вставки в новую строку.</param>
@@ -154,13 +189,13 @@ public class StreamGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseS
     }
 
     /// <summary>
-    ///     Подготавливает обновленный список игр, добавляя новую игру, если она отсутствует.
+    /// Подготавливает обновленный список игр, добавляя новую игру, если она отсутствует.
     /// </summary>
     /// <param name="existingGames">Список существующих игр, разделенный точкой с запятой.</param>
     /// <param name="newGameName">Название новой игры, которая будет добавлена в список.</param>
     /// <returns>
-    ///     Возвращает обновленный список игр в формате строки, где игры разделены точкой с запятой.
-    ///     Если список игр пуст, то возвращает только название новой игры.
+    /// Возвращает обновленный список игр в формате строки, где игры разделены точкой с запятой.
+    /// Если список игр пуст, то возвращает только название новой игры.
     /// </returns>
     private static string PrepareUpdatedGameList(string existingGames, string newGameName)
     {
@@ -170,7 +205,7 @@ public class StreamGoogleSheetsService(GoogleSheetsBaseService googleSheetsBaseS
     }
 
     /// <summary>
-    ///     Обновляет список игр для существующего стрима в таблице Google Sheets.
+    /// Обновляет список игр для существующего стрима в таблице Google Sheets.
     /// </summary>
     /// <param name="row">Номер строки, где расположен стрим.</param>
     /// <param name="newGameName">Название новой игры для добавления в стрим.</param>

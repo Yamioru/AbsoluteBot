@@ -65,7 +65,7 @@ public class GeminiAskClient(GeminiSettingsProvider settingsProvider)
                 {
                     ["inlineData"] = new JObject
                     {
-                        ["mimeType"] = "image/png",
+                        ["mimeType"] = image.StartsWith("/9j/", StringComparison.Ordinal) ? "image/jpeg" : "image/png",
                         ["data"] = image
                     }
                 });

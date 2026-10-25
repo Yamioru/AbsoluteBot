@@ -10,12 +10,11 @@ namespace AbsoluteBot.Services;
 #pragma warning disable IDE0028
 
 /// <summary>
-///     Сервис для отслеживания, управления и записью прогресса прохождения игр на стримах.
+/// Сервис для отслеживания, управления и записью прогресса прохождения игр на стримах.
 /// </summary>
 public class GameProgressService
     (GameGoogleSheetsService gameGoogleSheetsService, ConfigService configService, HowLongToBeatService howLongToBeatService) : IAsyncInitializable
 {
-    private static string ProgressFilePath => DataPaths.Get("game_progress.json");
     private const int TimeThresholdForUpdate = 120;
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
 
@@ -27,6 +26,7 @@ public class GameProgressService
     private readonly Dictionary<string, int> _accumulatedTimeForUpdate = new();
     private ConcurrentDictionary<string, GameProgress> _gameProgressData = new();
     private string? _lastGameName;
+    private static string ProgressFilePath => DataPaths.Get("game_progress.json");
 
     public async Task InitializeAsync()
     {
@@ -36,7 +36,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Добавляет время к текущей игре и обновляет полное время прохождения игры, если накопленное время превышает порог.
+    /// Добавляет время к текущей игре и обновляет полное время прохождения игры, если накопленное время превышает порог.
     /// </summary>
     /// <param name="gameName">Название игры.</param>
     /// <param name="timeToAdd">Добавляемое время в минутах.</param>
@@ -66,7 +66,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Рассчитывает текущий прогресс игры в процентах.
+    /// Рассчитывает текущий прогресс игры в процентах.
     /// </summary>
     /// <returns>Процент прогресса игры или отрицательное значение в случае ошибки.</returns>
     public async Task<double> CalculateGameProgressAsync()
@@ -101,7 +101,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Генерирует сообщение о текущем прогрессе игры.
+    /// Генерирует сообщение о текущем прогрессе игры.
     /// </summary>
     /// <returns>Сообщение с информацией о прогрессе игры.</returns>
     public virtual async Task<string> GenerateProgressMessageAsync()
@@ -126,9 +126,25 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Асинхронно обновляет название последней игры.
+    /// Асинхронно обновляет название последней игры.
     /// </summary>
     /// <param name="lastGameName">Новое название игры.</param>
+    /// <summary>
+    /// Читает уже посчитанные минуты и процент игры, не ходя в таблицы и HowLongToBeat.
+    /// </summary>
+    public bool TryGetPlaytime(string gameName, out int minutes, out double percent)
+    {
+        minutes = 0;
+        percent = -1;
+        if (string.IsNullOrWhiteSpace(gameName)) return false;
+        var game = _gameProgressData.Values.FirstOrDefault(g =>
+            g.GameName.Equals(gameName, StringComparison.OrdinalIgnoreCase));
+        if (game == null) return false;
+        minutes = game.CurrentPlaytimeMinutes;
+        percent = CalculateProgressPercentage(game);
+        return true;
+    }
+
     public async Task UpdateLastGameNameAsync(string lastGameName)
     {
         try
@@ -146,7 +162,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Добавляет время к прогрессу игры.
+    /// Добавляет время к прогрессу игры.
     /// </summary>
     /// <param name="gameName">Название игры.</param>
     /// <param name="timeToAdd">Добавляемое время.</param>
@@ -162,7 +178,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Рассчитывает процент прохождения игры.
+    /// Рассчитывает процент прохождения игры.
     /// </summary>
     /// <param name="gameProgress">Объект прогресса игры.</param>
     /// <returns>Процент прогресса игры.</returns>
@@ -174,7 +190,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Проверяет накопленное время и обновляет общее время прохождения игры, если накопленное время превышает порог.
+    /// Проверяет накопленное время и обновляет общее время прохождения игры, если накопленное время превышает порог.
     /// </summary>
     /// <param name="gameName">Название игры.</param>
     private async Task CheckAndUpdateGameTimeAsync(string gameName)
@@ -187,7 +203,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Создает новый объект прогресса игры.
+    /// Создает новый объект прогресса игры.
     /// </summary>
     /// <param name="gameName">Название игры.</param>
     /// <param name="timeToAdd">Добавляемое время.</param>
@@ -204,7 +220,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Получает или создает объект прогресса игры.
+    /// Получает или создает объект прогресса игры.
     /// </summary>
     /// <param name="gameName">Название игры.</param>
     /// <returns>Объект прогресса игры.</returns>
@@ -228,8 +244,8 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Асинхронно загружает данные о прогрессе игр из файла, если файл существует.
-    ///     Если файл отсутствует, создается новый словарь прогресса игр.
+    /// Асинхронно загружает данные о прогрессе игр из файла, если файл существует.
+    /// Если файл отсутствует, создается новый словарь прогресса игр.
     /// </summary>
     /// <returns>Словарь данных прогресса игр.</returns>
     private static async Task<ConcurrentDictionary<string, GameProgress>> LoadGameProgressDataAsync()
@@ -249,7 +265,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Асинхронно сохраняет данные о прогрессе игр в файл.
+    /// Асинхронно сохраняет данные о прогрессе игр в файл.
     /// </summary>
     /// <param name="gameProgressData"> Данные о прогрессах игр.</param>
     private static async Task SaveProgressDataAsync(ConcurrentDictionary<string, GameProgress> gameProgressData)
@@ -270,7 +286,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Обновляет полное время прохождения игры.
+    /// Обновляет полное время прохождения игры.
     /// </summary>
     /// <param name="gameName">Название игры.</param>
     private async Task UpdateFullTimeAsync(string gameName)
@@ -296,8 +312,8 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Обновляет прогресс игры в таблице Google Sheets, если целочисленный процент прогресса увеличился.
-    ///     Если полное время прохождения игры равно 0, отправляет текущее время в игре.
+    /// Обновляет прогресс игры в таблице Google Sheets, если целочисленный процент прогресса увеличился.
+    /// Если полное время прохождения игры равно 0, отправляет текущее время в игре.
     /// </summary>
     /// <param name="progressPercentage">Процент прогресса игры.</param>
     /// <param name="isInfinite">Указывает, является ли прогресс бесконечным (полное время прохождения равно 0).</param>
@@ -313,7 +329,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Записывает текущее время игры в Google Sheets.
+    /// Записывает текущее время игры в Google Sheets.
     /// </summary>
     /// <param name="gameProgress">Объект прогресса игры.</param>
     private async Task WriteCurrentGameTimeAsync(GameProgress gameProgress)
@@ -324,7 +340,7 @@ public class GameProgressService
     }
 
     /// <summary>
-    ///     Записывает прогресс в Google Sheets, если процент прогресса увеличился.
+    /// Записывает прогресс в Google Sheets, если процент прогресса увеличился.
     /// </summary>
     /// <param name="gameProgress">Объект прогресса игры.</param>
     /// <param name="progressPercentage">Процент прогресса игры.</param>

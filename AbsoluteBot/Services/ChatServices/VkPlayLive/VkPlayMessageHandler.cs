@@ -1,17 +1,20 @@
 ﻿using AbsoluteBot.Chat.Context;
+using AbsoluteBot.Services.Recap;
 using AbsoluteBot.Services.UserManagementServices;
 using AbsoluteBot.Services.UtilityServices;
 
 namespace AbsoluteBot.Services.ChatServices.VkPlayLive;
 
 /// <summary>
-///     Обрабатывает сообщения VkPlayLive, выполняя различные действия по обработке.
+/// Обрабатывает сообщения VkPlayLive, выполняя различные действия по обработке.
 /// </summary>
-public class VkPlayMessageHandler(MessageProcessingService messageProcessingService, ICensorshipService censorshipService, BirthdayService birthdayService,
-    ConfigService configService, RoleService roleService) : BirthdayBaseMessageHandler(configService, birthdayService, roleService)
+public class VkPlayMessageHandler(MessageProcessingService messageProcessingService, ICensorshipService censorshipService,
+    BirthdayService birthdayService,
+    ConfigService configService, RoleService roleService, ChatJournalService chatJournal) : BirthdayBaseMessageHandler(configService, birthdayService,
+    roleService)
 {
     /// <summary>
-    ///     Обрабатывает сообщение, применяя цензуру, упоминания и отправку сообщений и прочее.
+    /// Обрабатывает сообщение, применяя цензуру, упоминания и отправку сообщений и прочее.
     /// </summary>
     /// <param name="message">Текст сообщения для обработки.</param>
     /// <param name="context">Контекст чата, содержащий информацию о текущем чате.</param>
@@ -22,9 +25,11 @@ public class VkPlayMessageHandler(MessageProcessingService messageProcessingServ
         var handledMessage = await HandleMention(message, context);
         if (handledMessage == null) return message;
         SaveLastMessage(context.Username, handledMessage);
+        chatJournal.Record(RecapSource.Stream, context.Username, context.UserId, handledMessage);
 
         // Обрабатывается сообщение через MessageProcessingService (исправление раскладки, перевод)
-        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId).ConfigureAwait(false);
+        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId)
+            .ConfigureAwait(false);
         if (processedMessage != null)
         {
             // Применение цензуры
@@ -40,7 +45,7 @@ public class VkPlayMessageHandler(MessageProcessingService messageProcessingServ
     }
 
     /// <summary>
-    ///     Проверяет, упоминается ли бот в тексте сообщения или в ответе на сообщение.
+    /// Проверяет, упоминается ли бот в тексте сообщения или в ответе на сообщение.
     /// </summary>
     /// <param name="text">Текст сообщения.</param>
     /// <param name="context">Контекст чата, содержащий данные о текущем сеансе чата.</param>

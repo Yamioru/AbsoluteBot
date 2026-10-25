@@ -5,15 +5,15 @@ using Serilog;
 namespace AbsoluteBot.Services.NeuralNetworkServices;
 
 /// <summary>
-///     Хранит текущего провайдера (Gemini/Groq) и модели по сущностям в <c>neural_models.json</c>.
-///     Изменения применяются сразу, без перезапуска.
+/// Хранит текущего провайдера (Gemini/Groq) и модели по сущностям в <c>neural_models.json</c>.
+/// Изменения применяются сразу, без перезапуска.
 /// </summary>
 public class NeuralModelConfigService : IAsyncInitializable
 {
-    private static string FilePath => DataPaths.Get("neural_models.json");
     private static readonly SemaphoreSlim Semaphore = new(1, 1);
-    private NeuralModelsDocument _document = NeuralModelsDocument.CreateDefault();
     private bool _loaded;
+    private NeuralModelsDocument _document = NeuralModelsDocument.CreateDefault();
+    private static string FilePath => DataPaths.Get("neural_models.json");
 
     public async Task InitializeAsync()
     {
@@ -21,18 +21,60 @@ public class NeuralModelConfigService : IAsyncInitializable
     }
 
     /// <summary>
-    ///     Возвращает текущего провайдера (<c>gemini</c> или <c>groq</c>).
+    /// Текстовое представление текущего провайдера и всех моделей (для админ-команды).
     /// </summary>
-    public string GetProvider()
+    public string FormatForDisplay()
     {
         EnsureLoaded();
-        return _document.Provider;
+        var lines = new List<string>
+        {
+            $"Провайдер: {_document.Provider}"
+        };
+
+        lines.Add($"!нарисуй: Cloudflare {CloudflareFluxImageService.ModelId}");
+        lines.Add("Gemini:");
+        foreach (var entity in NeuralEntities.All)
+        {
+            var model = GetModelFromMap(_document.Gemini, entity, NeuralModelsDocument.GetDefaultModel(entity, NeuralProviders.Gemini));
+            if (entity == NeuralEntities.Image)
+                lines.Add($"  {entity}: {model} (запасной, не используется !нарисуй)");
+            else
+                lines.Add($"  {entity}: {model}");
+        }
+
+        lines.Add("Groq:");
+        foreach (var entity in NeuralEntities.All)
+        {
+            if (entity == NeuralEntities.Image)
+            {
+                lines.Add("  Image: (запасной Gemini, не используется !нарисуй)");
+                continue;
+            }
+
+            lines.Add($"  {entity}: {GetModelFromMap(_document.Groq, entity, NeuralModelsDocument.GetDefaultModel(entity, NeuralProviders.Groq))}");
+        }
+
+        return string.Join("\n", lines);
     }
 
     /// <summary>
-    ///     Возвращает модель для сущности с учётом текущего провайдера.
-    ///     Сущность <see cref="NeuralEntities.Image" /> всегда берётся из Gemini
-    ///     (запасной конфиг для устаревшего Gemini image-клиента; живой <c>!нарисуй</c> идёт через Cloudflare).
+    /// Модель Gemini для сущности, даже если чат сейчас смотрит в Groq.
+    /// </summary>
+    public string GetGeminiModel(string entity)
+    {
+        EnsureLoaded();
+        var normalized = NormalizeEntity(entity);
+        if (normalized == null)
+            throw new ArgumentException($"Неизвестная сущность нейросети: {entity}", nameof(entity));
+
+        var fallback = NeuralModelsDocument.GetDefaultModel(normalized, NeuralProviders.Gemini);
+        return GetModelFromMap(_document.Gemini, normalized, fallback);
+    }
+
+    /// <summary>
+    /// Возвращает модель для сущности с учётом текущего провайдера.
+    /// Сущность <see cref="NeuralEntities.Image" /> всегда берётся из Gemini
+    /// (запасной конфиг для устаревшего Gemini image-клиента; живой <c>!нарисуй</c> идёт через Cloudflare).
     /// </summary>
     public string GetModel(string entity)
     {
@@ -50,36 +92,36 @@ public class NeuralModelConfigService : IAsyncInitializable
     }
 
     /// <summary>
-    ///     Переключает провайдера и сразу сохраняет файл.
+    /// Возвращает текущего провайдера (<c>gemini</c> или <c>groq</c>).
     /// </summary>
-    public async Task<bool> SetProviderAsync(string provider)
+    public string GetProvider()
     {
-        var normalized = NormalizeProvider(provider);
-        if (normalized == null)
-            return false;
+        EnsureLoaded();
+        return _document.Provider;
+    }
 
-        await Semaphore.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            await LoadIfNeededUnsafeAsync().ConfigureAwait(false);
-            _document.Provider = normalized;
-            await SaveUnsafeAsync().ConfigureAwait(false);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Не удалось сохранить провайдера нейросети.");
-            return false;
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
+    public static string? NormalizeEntity(string? entity)
+    {
+        if (string.IsNullOrWhiteSpace(entity))
+            return null;
+        foreach (var known in NeuralEntities.All)
+            if (string.Equals(known, entity, StringComparison.OrdinalIgnoreCase))
+                return known;
+        return null;
+    }
+
+    public static string? NormalizeProvider(string? provider)
+    {
+        if (string.Equals(provider, NeuralProviders.Gemini, StringComparison.OrdinalIgnoreCase))
+            return NeuralProviders.Gemini;
+        if (string.Equals(provider, NeuralProviders.Groq, StringComparison.OrdinalIgnoreCase))
+            return NeuralProviders.Groq;
+        return null;
     }
 
     /// <summary>
-    ///     Задаёт модель для сущности. Если провайдер не указан — используется текущий.
-    ///     Image всегда пишется в секцию Gemini (запасной конфиг, не влияет на живой <c>!нарисуй</c>).
+    /// Задаёт модель для сущности. Если провайдер не указан — используется текущий.
+    /// Image всегда пишется в секцию Gemini (запасной конфиг, не влияет на живой <c>!нарисуй</c>).
     /// </summary>
     public async Task<bool> SetModelAsync(string entity, string modelId, string? provider = null)
     {
@@ -123,69 +165,31 @@ public class NeuralModelConfigService : IAsyncInitializable
     }
 
     /// <summary>
-    ///     Текстовое представление текущего провайдера и всех моделей (для админ-команды).
+    /// Переключает провайдера и сразу сохраняет файл.
     /// </summary>
-    public string FormatForDisplay()
+    public async Task<bool> SetProviderAsync(string provider)
     {
-        EnsureLoaded();
-        var lines = new List<string>
-        {
-            $"Провайдер: {_document.Provider}"
-        };
+        var normalized = NormalizeProvider(provider);
+        if (normalized == null)
+            return false;
 
-        lines.Add($"!нарисуй: Cloudflare {CloudflareFluxImageService.ModelId}");
-        lines.Add("Gemini:");
-        foreach (var entity in NeuralEntities.All)
+        await Semaphore.WaitAsync().ConfigureAwait(false);
+        try
         {
-            var model = GetModelFromMap(_document.Gemini, entity, NeuralModelsDocument.GetDefaultModel(entity, NeuralProviders.Gemini));
-            if (entity == NeuralEntities.Image)
-                lines.Add($"  {entity}: {model} (запасной, не используется !нарисуй)");
-            else
-                lines.Add($"  {entity}: {model}");
+            await LoadIfNeededUnsafeAsync().ConfigureAwait(false);
+            _document.Provider = normalized;
+            await SaveUnsafeAsync().ConfigureAwait(false);
+            return true;
         }
-
-        lines.Add("Groq:");
-        foreach (var entity in NeuralEntities.All)
+        catch (Exception ex)
         {
-            if (entity == NeuralEntities.Image)
-            {
-                lines.Add("  Image: (запасной Gemini, не используется !нарисуй)");
-                continue;
-            }
-
-            lines.Add($"  {entity}: {GetModelFromMap(_document.Groq, entity, NeuralModelsDocument.GetDefaultModel(entity, NeuralProviders.Groq))}");
+            Log.Error(ex, "Не удалось сохранить провайдера нейросети.");
+            return false;
         }
-
-        return string.Join("\n", lines);
-    }
-
-    public static string? NormalizeProvider(string? provider)
-    {
-        if (string.Equals(provider, NeuralProviders.Gemini, StringComparison.OrdinalIgnoreCase))
-            return NeuralProviders.Gemini;
-        if (string.Equals(provider, NeuralProviders.Groq, StringComparison.OrdinalIgnoreCase))
-            return NeuralProviders.Groq;
-        return null;
-    }
-
-    public static string? NormalizeEntity(string? entity)
-    {
-        if (string.IsNullOrWhiteSpace(entity))
-            return null;
-        foreach (var known in NeuralEntities.All)
-            if (string.Equals(known, entity, StringComparison.OrdinalIgnoreCase))
-                return known;
-        return null;
-    }
-
-    private bool IsGroq() =>
-        string.Equals(_document.Provider, NeuralProviders.Groq, StringComparison.OrdinalIgnoreCase);
-
-    private static string GetModelFromMap(Dictionary<string, string> map, string entity, string fallback)
-    {
-        if (map.TryGetValue(entity, out var model) && !string.IsNullOrWhiteSpace(model))
-            return model;
-        return fallback;
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     private void EnsureLoaded()
@@ -208,11 +212,16 @@ public class NeuralModelConfigService : IAsyncInitializable
         }
     }
 
-    private async Task LoadIfNeededUnsafeAsync()
+    private static string GetModelFromMap(Dictionary<string, string> map, string entity, string fallback)
     {
-        if (_loaded) return;
-        _document = await LoadFromFileAsync().ConfigureAwait(false);
-        _loaded = true;
+        if (map.TryGetValue(entity, out var model) && !string.IsNullOrWhiteSpace(model))
+            return model;
+        return fallback;
+    }
+
+    private bool IsGroq()
+    {
+        return string.Equals(_document.Provider, NeuralProviders.Groq, StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<NeuralModelsDocument> LoadFromFileAsync()
@@ -238,6 +247,13 @@ public class NeuralModelConfigService : IAsyncInitializable
         }
     }
 
+    private async Task LoadIfNeededUnsafeAsync()
+    {
+        if (_loaded) return;
+        _document = await LoadFromFileAsync().ConfigureAwait(false);
+        _loaded = true;
+    }
+
     private async Task SaveUnsafeAsync()
     {
         _document.EnsureDefaults();
@@ -254,7 +270,7 @@ public class NeuralModelConfigService : IAsyncInitializable
 }
 
 /// <summary>
-///     Документ <c>neural_models.json</c>.
+/// Документ <c>neural_models.json</c>.
 /// </summary>
 public class NeuralModelsDocument
 {
@@ -265,15 +281,9 @@ public class NeuralModelsDocument
     public const string DefaultGroqChat = "openai/gpt-oss-20b";
     public const string DefaultGroqAsk = "openai/gpt-oss-20b";
     public const string DefaultGroqGoogleSearch = "groq/compound";
-
-    [JsonProperty("provider")]
-    public string Provider { get; set; } = NeuralProviders.Gemini;
-
-    [JsonProperty("gemini")]
-    public Dictionary<string, string> Gemini { get; set; } = new();
-
-    [JsonProperty("groq")]
-    public Dictionary<string, string> Groq { get; set; } = new();
+    [JsonProperty("gemini")] public Dictionary<string, string> Gemini { get; set; } = new();
+    [JsonProperty("groq")] public Dictionary<string, string> Groq { get; set; } = new();
+    [JsonProperty("provider")] public string Provider { get; set; } = NeuralProviders.Gemini;
 
     public static NeuralModelsDocument CreateDefault()
     {

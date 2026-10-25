@@ -1,22 +1,25 @@
 ﻿using AbsoluteBot.Chat.Context;
+using AbsoluteBot.Services.Recap;
 using AbsoluteBot.Services.UserManagementServices;
 using AbsoluteBot.Services.UtilityServices;
 using Discord;
 using Discord.WebSocket;
 using Serilog;
+using ChannelType = AbsoluteBot.Chat.Context.ChannelType;
 
 namespace AbsoluteBot.Services.ChatServices.Discord;
 
 ///// <summary>
 /////     Обрабатывает сообщения Discord, выполняя различные действия по обработке.
 ///// </summary>
-public class DiscordMessageHandler(MessageProcessingService messageProcessingService, ConfigService configService, BirthdayService birthdayService, RoleService roleService) :
+public class DiscordMessageHandler(MessageProcessingService messageProcessingService, ConfigService configService, BirthdayService birthdayService,
+    RoleService roleService, ChatJournalService chatJournal) :
     BirthdayBaseMessageHandler(configService, birthdayService, roleService)
 {
     private const double RandomReactionProbability = 0.015;
 
     /// <summary>
-    ///     Обрабатывает сообщение, упоминания и отправку сообщений и прочее.
+    /// Обрабатывает сообщение, упоминания и отправку сообщений и прочее.
     /// </summary>
     /// <param name="message">Текст сообщения для обработки.</param>
     /// <param name="context">Контекст чата, содержащий информацию о текущем чате.</param>
@@ -28,9 +31,12 @@ public class DiscordMessageHandler(MessageProcessingService messageProcessingSer
         if (handledMessage == null) return message;
         await RandomHandleMessageAsync(context).ConfigureAwait(false);
         SaveLastMessage(context.Username, handledMessage);
+        if (context is {GuildType: ChannelType.Premium, ChatType: ChannelType.Premium})
+            chatJournal.Record(RecapSource.Discord, context.Username, context.UserId, handledMessage);
 
         // Обрабатывается сообщение через MessageProcessingService (исправление раскладки, перевод)
-        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId).ConfigureAwait(false);
+        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId)
+            .ConfigureAwait(false);
         if (processedMessage != null)
             await context.ChatService.SendMessageAsync($"{context.Username}: {processedMessage}", context).ConfigureAwait(false);
         else
@@ -40,7 +46,7 @@ public class DiscordMessageHandler(MessageProcessingService messageProcessingSer
     }
 
     /// <summary>
-    ///     Проверяет, упоминается ли бот в тексте сообщения или в ответе на сообщение.
+    /// Проверяет, упоминается ли бот в тексте сообщения или в ответе на сообщение.
     /// </summary>
     /// <param name="text">Текст сообщения.</param>
     /// <param name="context">Контекст чата для текущего сообщения.</param>
@@ -54,7 +60,7 @@ public class DiscordMessageHandler(MessageProcessingService messageProcessingSer
     }
 
     /// <summary>
-    ///     Добавляет случайный эмоут к сообщению в чате Discord.
+    /// Добавляет случайный эмоут к сообщению в чате Discord.
     /// </summary>
     /// <param name="context">Контекст чата Discord, содержащий данные о текущем сообщении.</param>
     /// <param name="emote">Эмоут, который нужно добавить к сообщению.</param>
@@ -65,7 +71,7 @@ public class DiscordMessageHandler(MessageProcessingService messageProcessingSer
     }
 
     /// <summary>
-    ///     Получает случайный эмоут из доступных эмоутов гильдии.
+    /// Получает случайный эмоут из доступных эмоутов гильдии.
     /// </summary>
     /// <param name="context">Контекст чата Discord, содержащий данные о текущем сообщении и канале.</param>
     /// <returns>Случайный эмоут, если эмоуты доступны, иначе null.</returns>
@@ -80,7 +86,7 @@ public class DiscordMessageHandler(MessageProcessingService messageProcessingSer
     }
 
     /// <summary>
-    ///     Случайным образом добавляет реакцию на сообщение в Discord.
+    /// Случайным образом добавляет реакцию на сообщение в Discord.
     /// </summary>
     /// <param name="context">Контекст чата с сообщением.</param>
     /// <returns>Задача, представляющая выполнение асинхронной операции.</returns>
@@ -101,8 +107,8 @@ public class DiscordMessageHandler(MessageProcessingService messageProcessingSer
     }
 
     /// <summary>
-    ///     Определяет, нужно ли добавить случайную реакцию на сообщение.
-    ///     Вероятность определяется случайным числом.
+    /// Определяет, нужно ли добавить случайную реакцию на сообщение.
+    /// Вероятность определяется случайным числом.
     /// </summary>
     /// <returns>True, если реакцию нужно добавить, иначе False.</returns>
     private bool ShouldAddRandomReaction()

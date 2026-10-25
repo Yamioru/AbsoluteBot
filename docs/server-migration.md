@@ -49,8 +49,10 @@ free -h
 apt-get update
 apt-get install -y ca-certificates curl git
 curl -fsSL https://get.docker.com | sh
+systemctl enable --now docker
 docker --version
 docker compose version
+docker info >/dev/null && echo 'docker daemon OK'
 ```
 
 ## 4. Клон в /opt/absolutebot
@@ -135,7 +137,34 @@ chmod 600 /opt/absolutebot/scripts/github.env
 nano /opt/absolutebot/scripts/github.env
 ```
 
-Вписать `GITHUB_USER` и PAT с правом читать этот репозиторий. Файл не коммитить.
+В файле две строки, без кавычек и без пробелов вокруг `=`:
+
+```bash
+GITHUB_USER=логин
+GITHUB_TOKEN=github_pat_...
+```
+
+`GITHUB_USER` — это имя пользователя GitHub, не почта и не название токена. Оно видно на странице [github.com/settings/profile](https://github.com/settings/profile) в поле Username. Для этого репозитория владелец в адресе `github.com/Vireslumen/AbsoluteBot` — `Vireslumen`. Если токен выпускает другой аккаунт, у которого есть доступ к репозиторию, в `GITHUB_USER` пишется логин того аккаунта, который создал токен.
+
+`GITHUB_TOKEN` — персональный токен доступа (PAT). Пароль от входа на GitHub сюда не подходит: по HTTPS git принимает именно токен. Создать его в браузере, будучи залогиненным тем же аккаунтом:
+
+1. Открыть [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens) → **Generate new token** → **Fine-grained token**.
+2. Имя любое, например `absolutebot-server`. Срок — на своё усмотрение: когда токен протухнет, `git pull` перестанет проходить, пока в файл не впишут новый.
+3. **Resource owner** — владелец репозитория (`Vireslumen`). **Repository access** → **Only select repositories** → `AbsoluteBot`.
+4. **Permissions** → **Repository permissions** → **Contents** = **Read-only**. Остальные права не нужны: watcher только скачивает коммиты.
+5. **Generate token**. Строка показывается один раз, начинается с `github_pat_`. Её целиком вставить в `GITHUB_TOKEN`.
+
+В nano сохранить: Ctrl+O, Enter, выйти: Ctrl+X. Содержимое файла никуда не копировать: не в чат, не в git, не в скриншот.
+
+Если на старом сервере или на своём компьютере ещё лежит прежний `scripts/github.env`, можно перенести те же две строки. В скачанной папке `data` этого файла нет.
+
+После правки файла watcher нужно перезапустить, иначе он останется со старым окружением:
+
+```bash
+systemctl restart absolutebot-update
+```
+
+Файл не коммитить.
 
 ```bash
 cp /opt/absolutebot/scripts/absolutebot-update.service /etc/systemd/system/absolutebot-update.service
@@ -148,6 +177,7 @@ systemctl status absolutebot-update --no-pager
 
 ## Если что-то пошло не так
 
+- `Cannot connect to the Docker daemon at unix:///var/run/docker.sock`: демон не запущен. `systemctl enable --now docker`, затем `systemctl status docker --no-pager`. Если статус `failed`, смотреть `journalctl -u docker --no-pager -n 50`.
 - Контейнер `Restarting` и в логах OOM: в `docker-compose.yml` поднять `mem_limit` до `640m` и снова `docker compose up -d`. Не возвращать `1000m`.
 - Хост постоянно в swap уже после старта бота: опустить лимит до `384m`.
 - В логах нет платформ: открыть `data/config.json` на месте и проверить, что загрузка не обрезала файл. Токены в чат и в git не копировать.

@@ -15,7 +15,7 @@ RUN dotnet publish AbsoluteBot/AbsoluteBot.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim AS final
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tzdata libgomp1 \
+    && apt-get install -y --no-install-recommends tzdata libgomp1 ffmpeg \
     && ln -snf /usr/share/zoneinfo/Europe/Vienna /etc/localtime \
     && echo Europe/Vienna > /etc/timezone \
     && test -e /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 \

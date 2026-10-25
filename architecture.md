@@ -33,6 +33,8 @@ Program
 
 Генерируемые отчёты стрима: `stream_stats/stream_{N}.json` (относительно data-root). Тихий прогресс ачивок: `achievements/progress.json`.
 
+Журнал `!чтобыло` лежит в `chat_journal/` того же корня и в git не входит. `stream.jsonl` — реплики Twitch и VK Live с никами, `telegram.jsonl` и `discord.jsonl` — только премиум-каналы. `sessions.json` — отрезки игр одного эфира. Дневные конспекты в `chat_journal/digests/` тоже с никами. Подмена на `User_N` делается в памяти в момент запроса к Gemini и на диск не пишется. Строки старше полугода удаляются. `!амнезия` этот журнал не трогает: память диалога `ChatHistory` остаётся отдельной. Команда `!совет` ходит в Gemini с поиском и, если Twitch онлайн, с одним JPEG: последний сегмент плейлиста около 720p и разовый `ffmpeg` в образе. Превью Helix не используется, оно обновляется примерно раз в 5 минут.
+
 SBTI и каталоги персонажей: `sbti_data.json`, `sbti_characters.json`, `mbti_data.json`, `mbti_characters.json`. Персональные JSON в публикацию репозитория не входят, список — в [README.md](README.md).
 
 Модели нейросети: `neural_models.json` (провайдер `gemini`/`groq` и ID моделей по сущностям Chat/Ask/GoogleSearch/Image). Смена из админ-канала без перезапуска. В Groq уходит урезанная история (первые 2 + последние 30 сообщений); для `gpt-oss` ставится `reasoning_effort=low`, иначе reasoning съедает дневной лимит токенов.

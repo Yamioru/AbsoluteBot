@@ -8,6 +8,7 @@ using AbsoluteBot.Services.ChatServices.TwitchChat;
 using AbsoluteBot.Services.ChatServices.VkPlayLive;
 using AbsoluteBot.Services.GoogleSheetsServices;
 using AbsoluteBot.Services.NeuralNetworkServices;
+using AbsoluteBot.Services.Recap;
 using AbsoluteBot.Services.UtilityServices;
 using Serilog;
 using Stream = TwitchLib.Api.Helix.Models.Streams.GetStreams.Stream;
@@ -15,24 +16,29 @@ using Stream = TwitchLib.Api.Helix.Models.Streams.GetStreams.Stream;
 namespace AbsoluteBot.Services.ScheduledTasks;
 #pragma warning disable IDE0028
 /// <summary>
-///     Сервис для мониторинга стримов на Twitch и обновления информации о стриме.
+/// Сервис для мониторинга стримов на Twitch и обновления информации о стриме.
 /// </summary>
 public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, ConfigService configService,
     TelegramChatService telegramChatService, DiscordChatService discordChatService, INeuralChatService neuralChat,
     TelegramChannelManager telegramChannelManager,
     GameGoogleSheetsService gameGoogleSheetsService, StreamGoogleSheetsService streamGoogleSheetsService,
     GameProgressService gameProgressService, VkPlayChatService vkPlayChatService, ICommandRegistry commandRegistry,
-    StreamChatterStatsService streamChatterStatsService) : IAsyncInitializable
+    StreamChatterStatsService streamChatterStatsService, ChatJournalService chatJournal) : IAsyncInitializable
 {
     private const int VkPlayAllCommandsReminderIntervalHours = 3;
     private const int VkPlayRandomCommandReminderIntervalMinutes = 42;
     private const int VkPlayHighlightsReminderIntervalMinutes = 128;
-    private const string VkPlayReminderMessage = "Хэй молодёжь, блин, привет друзья, напишите !команды, чтоб узнать кто я. А если вдруг скучно, то тегни меня и напиши ты как дела!";
-    private const string VkPlayHighlightsReminderMessage = "А вы знали, что существует канал с хайлайтами со стримов? https://www.youtube.com/@victimcourtHighlights";
+
+    private const string VkPlayReminderMessage =
+        "Хэй молодёжь, блин, привет друзья, напишите !команды, чтоб узнать кто я. А если вдруг скучно, то тегни меня и напиши ты как дела!";
+
+    private const string VkPlayHighlightsReminderMessage =
+        "А вы знали, что существует канал с хайлайтами со стримов? https://www.youtube.com/@victimcourtHighlights";
+
     private bool _streamWasOnline;
     private CancellationTokenSource? _vkPlayAllCommandsReminderCancellationTokenSource;
-    private CancellationTokenSource? _vkPlayRandomCommandReminderCancellationTokenSource;
     private CancellationTokenSource? _vkPlayHighlightsReminderCancellationTokenSource;
+    private CancellationTokenSource? _vkPlayRandomCommandReminderCancellationTokenSource;
     private List<string>? _streamLinks = new();
     private string? _lastGameName;
 
@@ -45,6 +51,8 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
             Log.Warning("Не удалось загрузить последнюю игру на стриме или ссылки на стрим.");
         if (_streamWasOnline)
         {
+            var streamNumber = await configService.GetConfigValueAsync<int>("StreamNumber").ConfigureAwait(false);
+            chatJournal.EnsureOpen(streamNumber, _lastGameName);
             _ = StartVkPlayAllCommandsReminderAsync().ConfigureAwait(false);
             _ = StartVkPlayRandomCommandReminderAsync().ConfigureAwait(false);
             _ = StartVkPlayHighlightsReminderAsync().ConfigureAwait(false);
@@ -52,7 +60,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
-    ///     Выполняет проверку состояния стрима на Twitch и обрабатывает изменения.
+    /// Выполняет проверку состояния стрима на Twitch и обрабатывает изменения.
     /// </summary>
     public async Task ExecuteTwitchOnlineCheckTask(int twitchCheckTimeMinutes)
     {
@@ -71,18 +79,19 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
-    ///     Обрабатывает смену игры на стриме.
+    /// Обрабатывает смену игры на стриме.
     /// </summary>
     /// <param name="newGameName">Название новой игры.</param>
     private async Task HandleGameChange(string newGameName)
     {
         var streamNumber = await configService.GetConfigValueAsync<int>("StreamNumber").ConfigureAwait(false);
         await UpdateGoogleSheetsForStreamStartAsync(newGameName, streamNumber).ConfigureAwait(false);
+        chatJournal.ChangeGame(newGameName);
         _lastGameName = newGameName;
     }
 
     /// <summary>
-    ///     Обрабатывает завершение стрима.
+    /// Обрабатывает завершение стрима.
     /// </summary>
     private async Task HandleStreamEnded()
     {
@@ -90,6 +99,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
 
         _streamWasOnline = false;
         await configService.SetConfigValueAsync("StreamWasOnline", false).ConfigureAwait(false);
+        chatJournal.EndStream();
 
         // Остановка таймера VkPlay при завершении стрима
         StopVkPlayReminder();
@@ -103,7 +113,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
-    ///     Обрабатывает начало стрима на Twitch.
+    /// Обрабатывает начало стрима на Twitch.
     /// </summary>
     /// <param name="stream">Информация о текущем стриме.</param>
     private async Task HandleStreamStarted(Stream stream)
@@ -115,6 +125,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
         streamNumber++;
         await streamChatterStatsService.BeginNewStreamAsync(streamNumber).ConfigureAwait(false);
         await configService.SetConfigValueAsync("StreamNumber", streamNumber).ConfigureAwait(false);
+        chatJournal.BeginStream(streamNumber, stream.GameName);
 
         // Запуск асинхронных задач для отправки информации о доступных командах и канале хайлайтов
         _ = StartVkPlayAllCommandsReminderAsync().ConfigureAwait(false);
@@ -138,7 +149,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
-    ///     Обрабатывает состояние стрима при его продолжении или смене игры.
+    /// Обрабатывает состояние стрима при его продолжении или смене игры.
     /// </summary>
     /// <param name="stream">Информация о текущем стриме.</param>
     /// <param name="twitchCheckTimeMinutes">Время в минутах, которое проходит между вызовами обновления прогресса.</param>
@@ -154,7 +165,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
-    ///     Запускает повторяющееся отправление напоминаний в чат VkPlay с интервалом в 2 часа.
+    /// Запускает повторяющееся отправление напоминаний в чат VkPlay с интервалом в 2 часа.
     /// </summary>
     private async Task StartVkPlayAllCommandsReminderAsync()
     {
@@ -182,7 +193,33 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
-    ///     Запускает повторяющееся отправление напоминаний в чат VkPlay с интервалом в 40 минут.
+    /// Запускает повторяющееся отправление напоминания о канале хайлайтов в чат VkPlay с интервалом в 128 минут.
+    /// </summary>
+    private async Task StartVkPlayHighlightsReminderAsync()
+    {
+        _vkPlayHighlightsReminderCancellationTokenSource = new CancellationTokenSource();
+
+        try
+        {
+            while (!_vkPlayHighlightsReminderCancellationTokenSource.Token.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromMinutes(VkPlayHighlightsReminderIntervalMinutes),
+                    _vkPlayHighlightsReminderCancellationTokenSource.Token).ConfigureAwait(false);
+                await vkPlayChatService.SendMessageToChannelAsync(VkPlayHighlightsReminderMessage).ConfigureAwait(false);
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            Log.Information("Отправка сообщений на VkPlay была отменена.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Ошибка при отправке напоминания о хайлайтах на VkPlay.");
+        }
+    }
+
+    /// <summary>
+    /// Запускает повторяющееся отправление напоминаний в чат VkPlay с интервалом в 40 минут.
     /// </summary>
     private async Task StartVkPlayRandomCommandReminderAsync()
     {
@@ -219,33 +256,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
-    ///     Запускает повторяющееся отправление напоминания о канале хайлайтов в чат VkPlay с интервалом в 128 минут.
-    /// </summary>
-    private async Task StartVkPlayHighlightsReminderAsync()
-    {
-        _vkPlayHighlightsReminderCancellationTokenSource = new CancellationTokenSource();
-
-        try
-        {
-            while (!_vkPlayHighlightsReminderCancellationTokenSource.Token.IsCancellationRequested)
-            {
-                await Task.Delay(TimeSpan.FromMinutes(VkPlayHighlightsReminderIntervalMinutes),
-                    _vkPlayHighlightsReminderCancellationTokenSource.Token).ConfigureAwait(false);
-                await vkPlayChatService.SendMessageToChannelAsync(VkPlayHighlightsReminderMessage).ConfigureAwait(false);
-            }
-        }
-        catch (TaskCanceledException)
-        {
-            Log.Information("Отправка сообщений на VkPlay была отменена.");
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Ошибка при отправке напоминания о хайлайтах на VkPlay.");
-        }
-    }
-
-    /// <summary>
-    ///     Останавливает отправление сообщений в VkPlay.
+    /// Останавливает отправление сообщений в VkPlay.
     /// </summary>
     private void StopVkPlayReminder()
     {
@@ -255,7 +266,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
-    ///     Обновляет прогресс игры, используя данные стрима.
+    /// Обновляет прогресс игры, используя данные стрима.
     /// </summary>
     /// <param name="gameName">Название игры.</param>
     /// <param name="twitchCheckTimeMinutes">Время в минутах, которое проходит между вызовами обновления прогресса.</param>
@@ -267,7 +278,7 @@ public class TwitchStreamMonitoringService(TwitchChatService twitchChatService, 
     }
 
     /// <summary>
-    ///     Обновляет данные в Google Sheets, связанные с началом нового стрима.
+    /// Обновляет данные в Google Sheets, связанные с началом нового стрима.
     /// </summary>
     private async Task UpdateGoogleSheetsForStreamStartAsync(string gameName, int streamNumber)
     {

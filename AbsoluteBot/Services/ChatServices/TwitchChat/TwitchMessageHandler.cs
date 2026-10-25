@@ -1,5 +1,6 @@
 ﻿using AbsoluteBot.Chat.Context;
 using AbsoluteBot.Services.ChatServices.VkPlayLive;
+using AbsoluteBot.Services.Recap;
 using AbsoluteBot.Services.UserManagementServices;
 using AbsoluteBot.Services.UtilityServices;
 using Serilog;
@@ -11,7 +12,8 @@ namespace AbsoluteBot.Services.ChatServices.TwitchChat;
 /// </summary>
 public class TwitchMessageHandler(MessageProcessingService messageProcessingService, ICensorshipService censorshipService,
     ConfigService configService,
-    BirthdayService birthdayService, VkPlayChatService vkPlayChatService, RoleService roleService) : BirthdayBaseMessageHandler(configService,
+    BirthdayService birthdayService, VkPlayChatService vkPlayChatService, RoleService roleService,
+    ChatJournalService chatJournal) : BirthdayBaseMessageHandler(configService,
     birthdayService, roleService)
 {
     private const double RandomMessageProbability = 0.0015;
@@ -30,9 +32,11 @@ public class TwitchMessageHandler(MessageProcessingService messageProcessingServ
         var handledMessage = await HandleMention(message, context);
         if (handledMessage == null) return message;
         SaveLastMessage(context.Username, handledMessage);
+        chatJournal.Record(RecapSource.Stream, context.Username, context.UserId, handledMessage);
         await RandomHandleMessage(context).ConfigureAwait(false);
         // Обрабатывается сообщение через MessageProcessingService (исправление раскладки, перевод)
-        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId).ConfigureAwait(false);
+        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId)
+            .ConfigureAwait(false);
         if (processedMessage != null)
         {
             // Применение цензуры

@@ -1,5 +1,6 @@
 ﻿using AbsoluteBot.Chat.Context;
 using AbsoluteBot.Services.ChatServices.Interfaces;
+using AbsoluteBot.Services.Recap;
 using AbsoluteBot.Services.UserManagementServices;
 using AbsoluteBot.Services.UtilityServices;
 using Serilog;
@@ -7,10 +8,11 @@ using Serilog;
 namespace AbsoluteBot.Services.ChatServices.TelegramChat;
 
 /// <summary>
-///     Класс, отвечающий за обработку сообщений Telegram, включая обработку упоминаний бота,
-///     отправку сообщений и работу с реакциями.
+/// Класс, отвечающий за обработку сообщений Telegram, включая обработку упоминаний бота,
+/// отправку сообщений и работу с реакциями.
 /// </summary>
-public class TelegramMessageHandler(MessageProcessingService messageProcessingService, ConfigService configService, RoleService roleService)
+public class TelegramMessageHandler(MessageProcessingService messageProcessingService, ConfigService configService, RoleService roleService,
+        ChatJournalService chatJournal)
     : BaseMessageHandler(configService, roleService)
 {
     private const double DefaultRandomMentionProbability = 0.01;
@@ -22,7 +24,7 @@ public class TelegramMessageHandler(MessageProcessingService messageProcessingSe
     private string? _winterStickerId;
 
     /// <summary>
-    ///     Обрабатывает сообщение, упоминания и отправку сообщений и прочее.
+    /// Обрабатывает сообщение, упоминания и отправку сообщений и прочее.
     /// </summary>
     /// <param name="message">Текст сообщения для обработки.</param>
     /// <param name="context">Контекст чата, содержащий информацию о текущем чате.</param>
@@ -35,10 +37,15 @@ public class TelegramMessageHandler(MessageProcessingService messageProcessingSe
         await RandomHandleMessage(context).ConfigureAwait(false);
 
         if (!edited)
+        {
             SaveLastMessage(context.Username, handledMessage);
+            if (context is TelegramChatContext {ChannelType: ChannelType.Premium})
+                chatJournal.Record(RecapSource.Telegram, context.Username, context.UserId, handledMessage);
+        }
 
         // Обрабатывается сообщение через MessageProcessingService (исправление раскладки, перевод)
-        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId).ConfigureAwait(false);
+        var processedMessage = await messageProcessingService.ProcessMessageAsync(context.Username, handledMessage, context.Platform, context.UserId)
+            .ConfigureAwait(false);
         if (!string.IsNullOrEmpty(processedMessage))
             await context.ChatService.SendMessageAsync($"{context.Username}: {processedMessage}", context).ConfigureAwait(false);
         else
@@ -52,11 +59,12 @@ public class TelegramMessageHandler(MessageProcessingService messageProcessingSe
         await base.InitializeAsync().ConfigureAwait(false);
         _stickerId = await _telegramConfigService.GetConfigValueAsync<string>("TelegramStickerId").ConfigureAwait(false);
         _winterStickerId = await _telegramConfigService.GetConfigValueAsync<string>("TelegramStickerIdWinter").ConfigureAwait(false);
-        if (string.IsNullOrEmpty(_stickerId) || string.IsNullOrEmpty(_winterStickerId)) Log.Warning("Не удалось загрузить имена стикеров в телеграм.");
+        if (string.IsNullOrEmpty(_stickerId) || string.IsNullOrEmpty(_winterStickerId))
+            Log.Warning("Не удалось загрузить имена стикеров в телеграм.");
     }
-    
+
     /// <summary>
-    ///     Проверяет, упоминается ли бот в тексте сообщения или в ответе на сообщение.
+    /// Проверяет, упоминается ли бот в тексте сообщения или в ответе на сообщение.
     /// </summary>
     /// <param name="text">Текст сообщения.</param>
     /// <param name="context">Контекст чата, содержащий данные о текущем сеансе чата.</param>
@@ -68,7 +76,7 @@ public class TelegramMessageHandler(MessageProcessingService messageProcessingSe
     }
 
     /// <summary>
-    ///     Добавляет случайную реакцию на сообщение в чате Telegram.
+    /// Добавляет случайную реакцию на сообщение в чате Telegram.
     /// </summary>
     /// <param name="context">Контекст чата, содержащий данные о текущем сеансе чата.</param>
     /// <returns>Задача, представляющая выполнение операции отправки случайной реакции.</returns>
